@@ -70,8 +70,7 @@
 			<version>${tika.version}</version>
 		</dependency>
 
-		<!-- JavaFX (桌面窗口，开发时取消注释) -->
-		<!--
+		<!-- JavaFX (桌面窗口) -->
 		<dependency>
 			<groupId>org.openjfx</groupId>
 			<artifactId>javafx-controls</artifactId>
@@ -82,7 +81,6 @@
 			<artifactId>javafx-web</artifactId>
 			<version>${javafx.version}</version>
 		</dependency>
-		-->
 	</dependencies>
 
 	<build>
