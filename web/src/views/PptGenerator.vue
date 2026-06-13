@@ -40,15 +40,14 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import { generateOutline, confirmPpt, uploadFile } from '../api/index.js'
+import axios from 'axios'
 
 const messages = ref([])
 const inputText = ref('')
 const loading = ref(false)
 const dragOver = ref(false)
 const step = ref(0)
-const outline = ref(null)
-const uploadedFiles = ref([])
+const outlineStr = ref('')
 const msgContainer = ref(null)
 const fileInput = ref(null)
 
@@ -70,9 +69,7 @@ function scrollBottom() {
   })
 }
 
-function triggerFileInput() {
-  fileInput.value?.click()
-}
+function triggerFileInput() { fileInput.value?.click() }
 
 function onFileSelected(e) {
   const file = e.target.files[0]
@@ -85,19 +82,12 @@ function onDrop(e) {
   if (file) handleFile(file)
 }
 
-async function handleFile(file) {
+function handleFile(file) {
   const iconMap = { pdf: '📄', docx: '📝', doc: '📝', pptx: '📊', txt: '📄' }
   const ext = file.name.split('.').pop().toLowerCase()
   const icon = iconMap[ext] || '📎'
   addMsg('user', `${icon} <b>${file.name}</b> 已上传`)
-  try {
-    const res = await uploadFile(file)
-    const fileId = res.data?.data?.fileId
-    if (fileId) uploadedFiles.value.push(fileId)
-    addMsg('ai', `已收到 <b>${file.name}</b> ✅ 我会参考这份资料来制作PPT。请告诉我您的PPT主题和要求👇`)
-  } catch {
-    addMsg('ai', '文件上传失败，请重试😅')
-  }
+  addMsg('ai', `已收到 <b>${file.name}</b> ✅ 请告诉我您的PPT主题和要求👇`)
 }
 
 async function sendMessage() {
@@ -108,13 +98,12 @@ async function sendMessage() {
   addMsg('user', text)
 
   if (step.value === 0) {
-    // 第一步：生成大纲
     addMsg('ai', '好的，我来整理大纲...⏳')
     try {
-      const res = await generateOutline(text, uploadedFiles.value)
-      outline.value = res.data?.data
-      if (outline.value && outline.value.slides && outline.value.slides.length > 0) {
-        updateLastMsg(buildOutlineHtml(outline.value))
+      const res = await axios.post('/api/ppt/generate-outline', { topic: text })
+      if (res.data.success && res.data.outline) {
+        outlineStr.value = res.data.outline
+        updateLastMsg(buildOutlineHtml(JSON.parse(res.data.outline)))
         step.value = 1
       } else {
         updateLastMsg('没成功生成大纲，换个说法试试？')
@@ -123,47 +112,40 @@ async function sendMessage() {
       updateLastMsg('没成功，换个说法试试？😅')
     }
   } else if (step.value === 1) {
-    // 调整大纲阶段
     addMsg('ai', '好的，已记录您的调整意见。您可以继续修改，或点击「满意，生成PPT」')
   }
   loading.value = false
 }
 
 async function confirmOutline() {
-  if (!outline.value) return
+  if (!outlineStr.value) return
   loading.value = true
   addMsg('user', '大纲没问题，生成吧！')
-  addMsg('ai', '好的，正在为您生成PPT…<div class="progress-bar"><div class="progress-track"><div class="progress-fill" style="width:30%"></div></div><span class="progress-label">正在生成…</span></div>')
+  addMsg('ai', '好的，正在为您生成PPT…⏳')
 
   try {
-    const res = await confirmPpt(outline.value)
-    const result = res.data?.data
-    if (result) {
-      setTimeout(() => {
-        // 更新进度
-        const last = messages.value[messages.value.length - 1]
-        last.content = `✅ PPT 已生成完毕！
-          <div style="margin-top:8px;padding:12px;background:#f0fff0;border-radius:8px;border-left:3px solid #2e7d32;">
-            <b>📁 文件：</b>${result.fileName}<br>
-            <b>📐 页数：</b>${result.slideCount} 页<br>
-            <b>📦 大小：</b>${formatSize(result.fileSize)}
-          </div>
-          <div class="card-actions">
-            <button class="btn btn-primary" @click="downloadFile(\'${result.fileId}\')">📂 打开文件</button>
-            <button class="btn btn-ghost" @click="startOver">🔄 重新做一个</button>
-          </div>`
-        step.value = 2
-        scrollBottom()
-      }, 500)
+    const res = await axios.post('/api/ppt/confirm', { outline: outlineStr.value })
+    const result = res.data
+    if (result.success) {
+      const last = messages.value[messages.value.length - 1]
+      last.content = `✅ PPT 已生成完毕！
+        <div style="margin-top:8px;padding:12px;background:#f0fff0;border-radius:8px;border-left:3px solid #2e7d32;">
+          <b>📁 文件：</b>${result.fileName}<br>
+          <b>📦 大小：</b>${formatSize(result.fileSize)}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary" onclick="window.open('/api/ppt/download/${result.fileName}')">📂 打开文件</button>
+          <button class="btn btn-ghost" onclick="document.dispatchEvent(new CustomEvent('ppt-restart'))">🔄 重新做一个</button>
+        </div>`
+      step.value = 2
+      scrollBottom()
+    } else {
+      updateLastMsg('生成 PPT 失败：' + (result.error || '未知错误'))
     }
   } catch {
     updateLastMsg('生成 PPT 失败，请稍后重试😅')
   }
   loading.value = false
-}
-
-function downloadFile(fileId) {
-  window.open('/api/ppt/download/' + fileId, '_blank')
 }
 
 function modifyOutline() {
@@ -175,15 +157,10 @@ function modifyOutline() {
     </div>`)
 }
 
-function regenerateOutline() {
-  // AI 重新生成（用同一主题再调一次）
-}
-
 function startOver() {
   step.value = 0
-  outline.value = null
+  outlineStr.value = ''
   messages.value = []
-  uploadedFiles.value = []
   inputText.value = ''
 }
 
@@ -203,12 +180,11 @@ function buildOutlineHtml(outline) {
   return `好的，已经根据您的主题整理了一份大纲，您看看是否满意：
     <div class="outline-card">${itemsHtml}</div>
     <div style="margin-top:8px;font-size:13px;color:#888;">
-      📐 共 ${slides.length} 页 · 主题：${escapeHtml(outline.pptTitle || '')}
+      📐 共 ${slides.length} 页 · ${escapeHtml(outline.title || '')}
     </div>
     <div class="card-actions">
       <button class="btn btn-primary" onclick="document.dispatchEvent(new CustomEvent('ppt-confirm'))">✅ 满意，生成PPT</button>
       <button class="btn btn-outline" onclick="document.dispatchEvent(new CustomEvent('ppt-modify'))">✏️ 调整一下</button>
-      <button class="btn btn-ghost" onclick="document.dispatchEvent(new CustomEvent('ppt-regenerate'))">🔄 重新生成</button>
     </div>`
 }
 
@@ -225,10 +201,9 @@ function formatSize(bytes) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
 
-// 监听按钮事件（因为 innerHTML 中的 @click 不生效）
 document.addEventListener('ppt-confirm', confirmOutline)
 document.addEventListener('ppt-modify', modifyOutline)
-document.addEventListener('ppt-regenerate', regenerateOutline)
+document.addEventListener('ppt-restart', startOver)
 </script>
 
 <style scoped>

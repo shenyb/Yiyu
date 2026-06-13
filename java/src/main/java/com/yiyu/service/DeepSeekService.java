@@ -48,6 +48,41 @@ public class DeepSeekService {
         return parseResponse(response.body());
     }
 
+    /**
+     * 调用 DeepSeek Chat API，返回原始 JSON 响应（用于结构化数据）
+     */
+    public String chatRaw(String systemPrompt, String userMessage) throws Exception {
+        String body = buildRequestBody(systemPrompt, userMessage);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/v1/chat/completions"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .timeout(Duration.ofSeconds(120))
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("DeepSeek API error: " + response.statusCode() + " " + response.body());
+        }
+
+        return response.body();
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public String getBaseUrl() {
+        return baseUrl;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
     private String buildRequestBody(String systemPrompt, String userMessage) {
         return """
             {
