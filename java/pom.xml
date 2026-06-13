@@ -112,6 +112,16 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<!-- 显式指定 Java 25，解决 IDEA 语言级别问题 -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<source>25</source>
+					<target>25</target>
+					<release>25</release>
+				</configuration>
+			</plugin>
 			<!-- JavaFX 插件：处理模块路径，`mvnw javafx:run` 可启动桌面窗口 -->
 			<plugin>
 				<groupId>org.openjfx</groupId>
