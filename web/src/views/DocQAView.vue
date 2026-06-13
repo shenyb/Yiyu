@@ -37,15 +37,15 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import { uploadFile, chatSend } from '../api/index.js'
+import axios from 'axios'
 
+const sessionId = 'doc-' + Date.now()
 const messages = ref([])
 const inputText = ref('')
 const loading = ref(false)
 const dragOver = ref(false)
 const hasFile = ref(false)
 const fileName = ref('')
-const currentFileId = ref(null)
 const msgContainer = ref(null)
 const fileInput = ref(null)
 
@@ -55,37 +55,65 @@ function addMsg(role, content) {
   nextTick(() => { if(msgContainer.value) msgContainer.value.scrollTop = msgContainer.value.scrollHeight })
 }
 function triggerFileInput() { fileInput.value?.click() }
-function onFileSelected(e) { const f=e.target.files[0]; if(f) handleFile(f) }
+function onFileSelected(e) {
+  const f=e.target.files[0]; if(f) {
+    fileName.value = f.name; hasFile.value = true
+    addMsg('user', `📄 <b>${f.name}</b> 已选择`)
+    addMsg('ai', `已选择文件，正在读取...⏳`)
+    loadFile(f)
+  }
+}
 function onDrop(e) { dragOver.value=false; const f=e.dataTransfer.files[0]; if(f) handleFile(f) }
 
-async function handleFile(file) {
-  fileName.value = file.name; hasFile.value = true
-  addMsg('user', `📄 <b>${file.name}</b> 已上传`)
+async function loadFile(file) {
   try {
-    const res = await uploadFile(file)
-    currentFileId.value = res.data?.data?.fileId
-    addMsg('ai', `已收到 <b>${file.name}</b> ✅ 我已读取文件内容，您可以问我关于这份文件的问题了。`)
+    // 使用浏览器 File API 读取文件内容
+    const text = await file.text()
+    const res = await axios.post('/api/docqa/load', {
+      sessionId: sessionId,
+      filePath: file.name,
+      fileContent: text.substring(0, 50000)
+    })
+    if (res.data.success) {
+      fileName.value = res.data.fileName
+      updateLastMsg(`已收到 <b>${file.name}</b> ✅<br>文件摘要：${res.data.summary}<br><br>您可以问我关于这份文件的问题了。`)
+    } else {
+      updateLastMsg('文件读取失败：' + (res.data.error || '未知错误'))
+    }
   } catch {
-    addMsg('ai', '文件上传失败，请重试😅')
+    updateLastMsg('文件处理失败😅')
   }
+}
+
+function handleFile(file) {
+  fileName.value = file.name; hasFile.value = true
+  addMsg('user', `📄 <b>${file.name}</b> 已选择`)
+  loadFile(file)
 }
 
 async function sendMessage() {
-  const text = inputText.value.trim()
-  if (!text || !hasFile.value || loading.value) return
-  inputText.value = ''
-  loading.value = true
+  const text = inputText.value.trim(); if(!text||!hasFile.value||loading.value) return
+  inputText.value=''; loading.value=true
   addMsg('user', text)
-
+  addMsg('ai', '正在查阅文件内容...⏳')
   try {
-    const res = await chatSend(text, currentFileId.value ? [currentFileId.value] : [])
-    const reply = res.data?.data?.reply || '已收到您的提问，正在查阅文件内容...'
-    addMsg('ai', reply)
+    const res = await axios.post('/api/docqa/ask', {
+      sessionId: sessionId,
+      question: text
+    })
+    if (res.data.success) {
+      updateLastMsg(res.data.reply)
+    } else {
+      updateLastMsg('回答失败：' + (res.data.error || '未知错误'))
+    }
   } catch {
-    addMsg('ai', '处理失败，请稍后重试😅')
+    updateLastMsg('请求失败，请稍后重试😅')
   }
   loading.value = false
 }
+
+function updateLastMsg(html) { if(messages.value.length>0) { messages.value[messages.value.length-1].content=html; scrollBottom() } }
+function scrollBottom() { nextTick(()=>{ if(msgContainer.value) msgContainer.value.scrollTop=msgContainer.value.scrollHeight }) }
 </script>
 
 <style scoped>

@@ -40,15 +40,14 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import { generateOutline, confirmPpt, uploadFile } from '../api/index.js'
+import axios from 'axios'
 
 const messages = ref([])
 const inputText = ref('')
 const loading = ref(false)
 const dragOver = ref(false)
 const step = ref(0)
-const outline = ref(null)
-const uploadedFiles = ref([])
+const outlineStr = ref('')
 const msgContainer = ref(null)
 const fileInput = ref(null)
 
@@ -61,18 +60,11 @@ function triggerFileInput() { fileInput.value?.click() }
 function onFileSelected(e) { const f=e.target.files[0]; if(f) handleFile(f) }
 function onDrop(e) { dragOver.value=false; const f=e.dataTransfer.files[0]; if(f) handleFile(f) }
 
-async function handleFile(file) {
-  const iconMap = { pdf:'📄', docx:'📝', doc:'📝', pptx:'📊', txt:'📄' }
+function handleFile(file) {
+  const iconMap = { pdf:'📄', docx:'📝', doc:'📝', txt:'📄' }
   const ext = file.name.split('.').pop().toLowerCase()
   addMsg('user', `${iconMap[ext]||'📎'} <b>${file.name}</b> 已上传`)
-  try {
-    const res = await uploadFile(file)
-    const fileId = res.data?.data?.fileId
-    if (fileId) uploadedFiles.value.push(fileId)
-    addMsg('ai', `已收到 <b>${file.name}</b> ✅ 我会在研究报告中引用。请告诉我研究方向👇`)
-  } catch {
-    addMsg('ai', '文件上传失败😅')
-  }
+  addMsg('ai', `已收到 <b>${file.name}</b> ✅ 请告诉我研究方向👇`)
 }
 
 async function sendMessage() {
@@ -85,17 +77,18 @@ async function sendMessage() {
   if (step.value === 0) {
     addMsg('ai', '好的，我来检索相关文献，请稍等...⏳')
     try {
-      const res = await generateOutline(text, uploadedFiles.value)
-      outline.value = res.data?.data
-      if (outline.value?.slides?.length) {
-        const slides = outline.value.slides
-        let itemsHtml = slides.map((s, i) =>
+      const res = await axios.post('/api/research/generate-outline', { topic: text })
+      if (res.data.success && res.data.outline) {
+        outlineStr.value = res.data.outline
+        const outline = JSON.parse(res.data.outline)
+        const sections = outline.sections || []
+        let itemsHtml = sections.map((s, i) =>
           `<div class="item"><span class="num">${i+1}</span> ${escapeHtml(s.title||'')}</div>`
         ).join('')
         updateLastMsg(`已为您整理了一份调研报告框架：
           <div class="outline-card">${itemsHtml}</div>
           <div style="margin-top:8px;font-size:13px;color:#888;">
-            📚 主题：${escapeHtml(outline.value.pptTitle||'')}
+            📚 主题：${escapeHtml(outline.title||'')}
           </div>
           <div class="card-actions">
             <button class="btn btn-primary" onclick="document.dispatchEvent(new CustomEvent('research-confirm'))">✅ 满意，生成报告</button>
@@ -115,26 +108,27 @@ async function sendMessage() {
 }
 
 async function confirmReport() {
-  if (!outline.value) return
+  if (!outlineStr.value) return
   loading.value = true
   addMsg('user', '框架没问题，生成报告吧！')
   addMsg('ai', '正在整理文献、撰写报告…⏳')
 
   try {
-    const res = await confirmPpt(outline.value)
-    const result = res.data?.data
-    if (result) {
+    const res = await axios.post('/api/research/generate-report', { outline: outlineStr.value })
+    const result = res.data
+    if (result.success) {
       updateLastMsg(`✅ 调研报告已生成完毕！
         <div style="margin-top:8px;padding:12px;background:#e8f4ff;border-radius:8px;border-left:3px solid #0066cc;">
           <b>📁 文件：</b>${result.fileName}<br>
-          <b>📐 页数：</b>${result.slideCount} 页<br>
           <b>📦 大小：</b>${formatSize(result.fileSize)}
         </div>
         <div class="card-actions">
-          <button class="btn btn-primary" onclick="window.open('/api/ppt/download/${result.fileId}','_blank')">📂 打开文件</button>
+          <button class="btn btn-primary" onclick="window.open('/api/research/download/${result.fileName}')">📂 打开文件</button>
           <button class="btn btn-ghost" onclick="document.dispatchEvent(new CustomEvent('research-restart'))">🔄 重新调研</button>
         </div>`)
       step.value = 2
+    } else {
+      updateLastMsg('生成报告失败：' + (result.error || '未知错误'))
     }
   } catch {
     updateLastMsg('生成报告失败，请稍后重试😅')
@@ -152,26 +146,14 @@ function modifyOutline() {
 }
 
 function startOver() {
-  step.value = 0; outline.value = null; messages.value = []; uploadedFiles.value = []; inputText.value = ''
+  step.value=0; outlineStr.value=''; messages.value=[]; inputText.value=''
 }
 
 function updateLastMsg(html) {
-  if (messages.value.length) {
-    messages.value[messages.value.length-1].content = html
-    nextTick(() => { if(msgContainer.value) msgContainer.value.scrollTop = msgContainer.value.scrollHeight })
-  }
+  if(messages.value.length>0) { messages.value[messages.value.length-1].content=html; scrollBottom() }
 }
-
-function escapeHtml(str) {
-  const div = document.createElement('div'); div.textContent = str; return div.innerHTML
-}
-
-function formatSize(bytes) {
-  if (!bytes) return '未知'
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB'
-  return (bytes/1024/1024).toFixed(1) + ' MB'
-}
+function escapeHtml(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML }
+function formatSize(bytes) { if(!bytes) return '未知'; if(bytes<1024) return bytes+' B'; if(bytes<1048576) return (bytes/1024).toFixed(1)+' KB'; return (bytes/1048576).toFixed(1)+' MB' }
 
 document.addEventListener('research-confirm', confirmReport)
 document.addEventListener('research-modify', modifyOutline)
