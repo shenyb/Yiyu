@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>医研AI助手</title>
+<style>
+  /* ============================================
+     全局重置
+     ============================================ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, '微软雅黑', 'Segoe UI', sans-serif;
+    background: #f0f2f5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    user-select: none;
+  }
+
+  /* ============================================
+     桌面窗口容器 — 模拟 exe 窗口效果
+     ============================================ */
+  .app-window {
+    width: 92vw;
+    max-width: 1400px;
+    height: 88vh;
+    max-height: 900px;
+    min-width: 800px;
+    min-height: 500px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    resize: both;
+  }
+
+  /* ============================================
+     标题栏（模拟 Windows 窗口）
+     ============================================ */
+  .titlebar {
+    height: 36px;
+    background: #2b2b2b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+  .titlebar-left { display: flex; align-items: center; gap: 8px; }
+  .titlebar-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    display: inline-block;
+  }
+  .titlebar-dot.red { background: #ff5f56; }
+  .titlebar-dot.yellow { background: #ffbd2e; }
+  .titlebar-dot.green { background: #27c93f; }
+  .titlebar-title {
+    color: #ccc; font-size: 13px; margin-left: 8px;
+    letter-spacing: 0.3px;
+  }
+  .titlebar-right { color: #888; font-size: 13px; }
+
+  /* ============================================
+     主内容区 — flex 行
+     ============================================ */
+  .main-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ============================================
+     左侧边栏
+     ============================================ */
+  .sidebar {
+    width: 56px;
+    background: #1e1e2d;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 16px;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .sidebar-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #6b6b8d; font-size: 18px;
+    cursor: pointer; transition: all 0.15s;
+    position: relative;
+  }
+  .sidebar-icon:hover { background: rgba(255,255,255,0.06); color: #fff; }
+  .sidebar-icon.active {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+  }
+  .sidebar-icon.active::before {
+    content: '';
+    position: absolute; left: 0; top: 8px; bottom: 8px;
+    width: 3px; border-radius: 0 3px 3px 0;
+    background: #c00000;
+  }
+  .sidebar-icon svg { width: 22px; height: 22px; fill: currentColor; }
+  .sidebar-divider {
+    width: 28px; height: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 6px 0;
+  }
+
+  /* ============================================
+     对话面板（中间）
+     ============================================ */
+  .chat-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #f7f8fa;
+    min-width: 0;
+  }
+
+  /* 对话头部 */
+  .chat-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #e8e8ec;
+    background: #fff;
+    flex-shrink: 0;
+  }
+  .chat-header h2 {
+    font-size: 16px; font-weight: 600; color: #1a1a2e;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .chat-header h2 .badge {
+    font-size: 11px; font-weight: 400;
+    background: #c00000; color: #fff; padding: 1px 10px;
+    border-radius: 10px;
+  }
+  .chat-header p { font-size: 13px; color: #888; margin-top: 2px; }
+
+  /* 对话消息区 */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* 消息气泡 */
+  .msg {
+    display: flex;
+    gap: 10px;
+    max-width: 85%;
+    animation: fadeIn 0.25s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.ai { align-self: flex-start; }
+
+  .msg-avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+  .msg.user .msg-avatar { background: #c00000; color: #fff; }
+  .msg.ai .msg-avatar { background: #1e1e2d; color: #fff; }
+
+  .msg-bubble {
+    padding: 12px 16px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.65;
+    position: relative;
+  }
+  .msg.user .msg-bubble {
+    background: #c00000; color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg.ai .msg-bubble {
+    background: #fff;
+    color: #333;
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+
+  /* AI 消息中的卡片/按钮 */
+  .msg-bubble .card-actions {
+    display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+  }
+  .msg-bubble .btn {
+    padding: 7px 18px; border-radius: 8px; border: none;
+    font-size: 13px; cursor: pointer; transition: all 0.15s;
+    font-family: inherit;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .msg-bubble .btn-primary {
+    background: #c00000; color: #fff;
+  }
+  .msg-bubble .btn-primary:hover { background: #a00000; }
+  .msg-bubble .btn-outline {
+    background: transparent; color: #c00000;
+    border: 1px solid #c00000;
+  }
+  .msg-bubble .btn-outline:hover { background: #fff5f5; }
+  .msg-bubble .btn-ghost {
+    background: transparent; color: #666;
+    border: 1px solid #ddd;
+  }
+  .msg-bubble .btn-ghost:hover { background: #f5f5f5; }
+
+  /* 大纲卡片 */
+  .outline-card {
+    background: #f9fafb; border: 1px solid #e8e8ec;
+    border-radius: 10px; padding: 12px 16px; margin-top: 8px;
+  }
+  .outline-card .item {
+    display: flex; gap: 8px; padding: 5px 0;
+    font-size: 13.5px; color: #444;
+  }
+  .outline-card .item .num {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #c00000; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 11px; font-weight: 600;
+    margin-top: 2px;
+  }
+
+  /* 进度动画 */
+  .progress-bar {
+    display: flex; align-items: center; gap: 12px; margin-top: 10px;
+  }
+  .progress-track {
+    flex: 1; height: 6px; background: #e8e8ec;
+    border-radius: 3px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, #c00000, #e04040);
+    border-radius: 3px; transition: width 0.6s ease;
+    width: 0%;
+  }
+  .progress-label { font-size: 13px; color: #888; white-space: nowrap; }
+
+  /* 引导卡片（欢迎页场景推荐） */
+  .suggestion-cards {
+    display: flex; gap: 10px; margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .suggestion-card {
+    flex: 1; min-width: 160px;
+    background: #fff; border: 1px solid #e8e8ec;
+    border-radius: 12px; padding: 16px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .suggestion-card:hover {
+    border-color: #c00000;
+    box-shadow: 0 4px 16px rgba(192,0,0,0.08);
+    transform: translateY(-1px);
+  }
+  .suggestion-card .icon { font-size: 28px; margin-bottom: 8px; }
+  .suggestion-card h4 { font-size: 14px; color: #1a1a2e; }
+  .suggestion-card p { font-size: 12px; color: #999; margin-top: 4px; line-height: 1.5; }
+  .suggestion-card .tag {
+    display: inline-block; font-size: 11px;
+    background: #fff0f0; color: #c00000;
+    padding: 1px 8px; border-radius: 6px; margin-top: 8px;
+  }
+
+  /* ============================================
+     输入区
+     ============================================ */
+  .input-area {
+    padding: 12px 16px 14px;
+    background: #fff;
+    border-top: 1px solid #e8e8ec;
+    flex-shrink: 0;
+  }
+  .input-row {
+    display: flex; gap: 10px; align-items: flex-end;
+  }
+  .input-row textarea {
+    flex: 1;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    height: 44px;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .input-row textarea:focus { border-color: #c00000; }
+  .input-row .send-btn {
+    width: 44px; height: 44px;
+    border-radius: 10px; border: none;
+    background: #c00000; color: #fff;
+    font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .input-row .send-btn:hover { background: #a00000; }
+  .input-row .send-btn:disabled { background: #ccc; cursor: not-allowed; }
+  .input-hint {
+    font-size: 12px; color: #aaa;
+    margin-top: 6px; padding-left: 4px;
+    display: flex; gap: 14px; align-items: center;
+  }
+  .input-hint .file-btn {
+    color: #c00000; cursor: pointer; font-size: 13px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .input-hint .file-btn:hover { color: #a00000; }
+
+  /* 拖拽文件到输入区的反馈 */
+  .input-area.drag-over textarea {
+    border-color: #c00000;
+    background: #fff5f5;
+  }
+  .input-area.drag-over .drop-indicator {
+    display: flex;
+  }
+  .drop-indicator {
+    display: none;
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(192,0,0,0.04);
+    border: 2px dashed #c00000;
+    border-radius: 10px;
+    align-items: center; justify-content: center;
+    font-size: 15px; color: #c00000; font-weight: 500;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .input-area {
+    position: relative;
+  }
+
+  /* ============================================
+     右侧面板（信息/文档）
+     ============================================ */
+  .right-panel {
+    width: 240px;
+    background: #fff;
+    border-left: 1px solid #e8e8ec;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+  .right-panel h3 {
+    font-size: 13px; color: #1a1a2e; font-weight: 600;
+    padding-bottom: 8px; border-bottom: 1px solid #f0f0f0;
+  }
+  .rp-item {
+    padding: 10px 12px;
+    background: #f7f8fa;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .rp-item:hover { background: #f0f0f5; }
+  .rp-item .rp-title { font-size: 13px; color: #333; font-weight: 500; }
+  .rp-item .rp-meta { font-size: 11px; color: #999; margin-top: 4px; }
+  .rp-item .rp-tag {
+    display: inline-block;
+    font-size: 10px; padding: 1px 6px; border-radius: 4px;
+    margin-right: 4px;
+  }
+  .rp-tag.ppt { background: #fff0f0; color: #c00000; }
+  .rp-tag.research { background: #e8f4ff; color: #0066cc; }
+  .rp-tag.doc { background: #f0f7f0; color: #2e7d32; }
+
+  /* ============================================
+     视图切换（页面路由）
+     ============================================ */
+  .view { display: none; }
+  .view.active { display: flex; flex-direction: column; flex: 1; }
+
+  /* ============================================
+     滚动条美化
+     ============================================ */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #bbb; }
+
+  /* ============================================
+     响应式
+     ============================================ */
+  @media (max-width: 820px) {
+    .app-window { width: 100vw; max-width: none; height: 100vh; max-height: none; min-width: 0; border-radius: 0; }
+    .right-panel { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================
+     应用窗口
+     ============================================ -->
+<div class="app-window">
+
+  <!-- 标题栏 -->
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <span class="titlebar-dot red"></span>
+      <span class="titlebar-dot yellow"></span>
+      <span class="titlebar-dot green"></span>
+      <span class="titlebar-title">医研AI助手 v0.1</span>
+    </div>
+    <div class="titlebar-right">— □ ×</div>
+  </div>
+
+  <!-- 主内容 -->
+  <div class="main-body">
+
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-icon active" onclick="switchView('chat')" title="对话">
+        <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+      </div>
+      <div class="sidebar-icon" onclick="switchView('ppt')" title="做PPT">
+        <svg viewBox="0 0 24 24"><path d="M6 2h8l6 6v12c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2zm7 1.5V9h5.5L13 3.5zM8 13h8v-2H8v2zm0 4h5v-2H8v2z"/></svg>
+      </div>
+      <div class="sidebar-icon" onclick="switchView('research')" title="课题调研">
+        <svg viewBox="0 0 24 24"><path d="M9 5v13l7-6.5L9 5z"/></svg>
+      </div>
+    </div>
+
+    <!-- ============================================
+         视图：对话首页
+         ============================================ -->
+    <div class="chat-panel view active" id="view-chat">
+      <div class="chat-header">
+        <h2>
+          <span>👋 你好！有什么需要帮忙的？</span>
+          <span class="badge">体验版</span>
+        </h2>
+        <p>直接说出来，我来帮你做</p>
+      </div>
+      <div class="messages" id="chat-messages">
+        <!-- AI 欢迎消息 -->
+        <div class="msg ai">
+          <div class="msg-avatar">🤖</div>
+          <div class="msg-bubble">
+            你好！我是医研AI助手，可以帮你做这些事：
+            <div class="suggestion-cards">
+              <div class="suggestion-card" onclick="startPPT()">
+                <div class="icon">📊</div>
+                <h4>做PPT</h4>
+                <p>输入主题，帮你生成科室汇报、教学课件</p>
+                <span class="tag">试试 →</span>
+              </div>
+              <div class="suggestion-card" onclick="startResearch()">
+                <div class="icon">🔬</div>
+                <h4>课题调研</h4>
+                <p>给个研究方向，帮你查文献、整理报告</p>
+                <span class="tag">试试 →</span>
+              </div>
+              <div class="suggestion-card" onclick="startDocQA()">
+                <div class="icon">📄</div>
+                <h4>读文件</h4>
+                <p>上传PDF或Word，直接问文件里的内容</p>
+                <span class="tag">试试 →</span>
+              </div>
+            </div>
+            <div style="margin-top:10px;font-size:13px;color:#999;">
+              或者直接在下面输入你的需求 ↘
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="input-area" id="chat-input-area">
+        <div class="drop-indicator">📄 松开以添加文件</div>
+        <div class="input-row">
+          <textarea id="chat-input" placeholder="比如说：帮我做一个关于糖尿病足的PPT…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+          <button class="send-btn" onclick="sendMessage()">↵</button>
+        </div>
+        <div class="input-hint">
+          <span>按 Enter 发送，Shift+Enter 换行</span>
+          <span class="file-btn" onclick="simulateFileDrop('chat')">📎 拖拽文件到此处或点此上传</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================
+         视图：做PPT（全屏对话，专门流程）
+         ============================================ -->
+    <div class="chat-panel view" id="view-ppt">
+      <div class="chat-header">
+        <h2>📊 AI 做PPT <span class="badge" style="background:#2e7d32;">引导模式</span></h2>
+        <p>告诉我主题和要求，我帮你生成大纲和PPT</p>
+      </div>
+      <div class="messages" id="ppt-messages">
+        <div class="msg ai">
+          <div class="msg-avatar">🤖</div>
+          <div class="msg-bubble">
+            好的！我们来做一个PPT。请告诉我：
+            <div style="margin-top:10px;padding:12px;background:#fff5f5;border-radius:8px;border-left:3px solid #c00000;font-size:13.5px;color:#555;">
+              <b>例如：</b>"帮我做一个关于高血压基层防治的PPT，
+              大约12页，面向社区医生，风格简洁专业"
+            </div>
+            <div style="margin-top:10px;display:flex;gap:12px;font-size:13px;color:#888;">
+              <span>📐 也可以上传参考资料，我会参考里面的内容</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="input-area" id="ppt-input-area">
+        <div class="drop-indicator">📄 松开以添加文件作为参考</div>
+        <div class="input-row">
+          <textarea id="ppt-input" placeholder="输入PPT主题和要求…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();pptSendMessage()}"></textarea>
+          <button class="send-btn" onclick="pptSendMessage()">↵</button>
+        </div>
+        <div class="input-hint">
+          <span>💡 建议说明：主题、页数、风格、面向对象</span>
+          <span style="color:#c00000;cursor:pointer;" onclick="pptQuickFill('帮我做一个关于高血压基层防治的PPT，约12页，面向社区医生，风格简洁专业')">点此填入示例</span>
+          <span class="file-btn" onclick="simulateFileDrop('ppt')">📎 拖拽参考资料到此</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================
+         视图：课题调研
+         ============================================ -->
+    <div class="chat-panel view" id="view-research">
+      <div class="chat-header">
+        <h2>🔬 AI 课题调研 <span class="badge" style="background:#0066cc;">引导模式</span></h2>
+        <p>告诉我研究方向，帮你查文献、整理调研报告</p>
+      </div>
+      <div class="messages" id="research-messages">
+        <div class="msg ai">
+          <div class="msg-avatar">🤖</div>
+          <div class="msg-bubble">
+            好的！我来帮你做课题调研。请告诉我：
+            <div style="margin-top:10px;padding:12px;background:#e8f4ff;border-radius:8px;border-left:3px solid #0066cc;font-size:13.5px;color:#555;">
+              <b>例如：</b>"帮我查一下近三年mRNA疫苗在
+              肿瘤治疗中的临床研究进展"
+            </div>
+            <div style="margin-top:10px;font-size:13px;color:#888;">
+              📚 我会联网检索相关文献，整理成调研报告
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="input-area" id="research-input-area">
+        <div class="drop-indicator">📄 松开以添加参考文献</div>
+        <div class="input-row">
+          <textarea id="research-input" placeholder="输入研究方向…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();researchSendMessage()}"></textarea>
+          <button class="send-btn" onclick="researchSendMessage()">↵</button>
+        </div>
+        <div class="input-hint">
+          <span>💡 可指定：研究方向、时间范围、语言</span>
+          <span style="color:#0066cc;cursor:pointer;" onclick="researchQuickFill('帮我查一下近三年SGLT2抑制剂在心力衰竭治疗中的临床研究进展，包含中文和英文文献')">点此填入示例</span>
+          <span class="file-btn" onclick="simulateFileDrop('research')">📎 拖拽文献到此</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================
+         视图：文件（最近生成的文件列表）
+         ============================================ -->
+    <div class="chat-panel view" id="view-files">
+      <div class="chat-header">
+        <h2>📁 最近生成的文件</h2>
+        <p>双击文件打开，拖拽到对话框引用</p>
+      </div>
+      <div class="messages" id="files-messages" style="padding:20px;">
+        <div style="background:#f9fafb;border-radius:12px;border:1px solid #e8e8ec;overflow:hidden;">
+          <div class="file-row" style="padding:14px 18px;border-bottom:1px solid #e8e8ec;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='#f0f0f5'" onmouseout="this.style.background=''" ondblclick="alert('实际运行时打开：卒中中心质控会议.pptx')">
+            <span style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:22px;">📊</span>
+              <span style="font-weight:500;color:#333;">卒中中心质控会议（第一季度）.pptx</span>
+            </span>
+            <span style="font-size:12px;color:#999;">2026-06-12</span>
+          </div>
+          <div class="file-row" style="padding:14px 18px;border-bottom:1px solid #e8e8ec;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='#f0f0f5'" onmouseout="this.style.background=''" ondblclick="alert('实际运行时打开：高血压指南解读.pptx')">
+            <span style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:22px;">📊</span>
+              <span style="font-weight:500;color:#333;">高血压基层防治指南解读.pptx</span>
+            </span>
+            <span style="font-size:12px;color:#999;">2026-06-10</span>
+          </div>
+          <div class="file-row" style="padding:14px 18px;border-bottom:1px solid #e8e8ec;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='#f0f0f5'" onmouseout="this.style.background=''" ondblclick="alert('实际运行时打开：SGLT2抑制剂调研报告.docx')">
+            <span style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:22px;">🔬</span>
+              <span style="font-weight:500;color:#333;">SGLT2抑制剂心衰研究进展调研报告.docx</span>
+            </span>
+            <span style="font-size:12px;color:#999;">2026-06-08</span>
+          </div>
+          <div class="file-row" style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='#f0f0f5'" onmouseout="this.style.background=''" ondblclick="alert('实际运行时打开：2025高血压指南.pdf')">
+            <span style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:22px;">📄</span>
+              <span style="font-weight:500;color:#333;">2025中国高血压防治指南.pdf</span>
+            </span>
+            <span style="font-size:12px;color:#999;">2026-06-05</span>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:14px 18px;background:#f7f8fa;border-radius:10px;font-size:13px;color:#888;display:flex;justify-content:space-between;">
+          <span>💡 文件可以直接从文件夹拖拽到对话框发送</span>
+          <span style="color:#c00000;cursor:pointer;" onclick="switchView('chat')">← 回到对话</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================
+         右侧面板
+         ============================================ -->
+    <div class="right-panel">
+      <h3>📋 快捷操作</h3>
+      <div class="rp-item" onclick="startPPT()">
+        <div class="rp-title">📊 新建PPT</div>
+        <div class="rp-meta">输入主题快速生成</div>
+      </div>
+      <div class="rp-item" onclick="startResearch()">
+        <div class="rp-title">🔬 新建课题调研</div>
+        <div class="rp-meta">查文献 · 整报告</div>
+      </div>
+      <div class="rp-item" onclick="startDocQA()">
+        <div class="rp-title">📄 上传文件提问</div>
+        <div class="rp-meta">读PDF/Word 问问题</div>
+      </div>
+
+      <h3 style="margin-top:8px;">🕐 最近记录</h3>
+      <div class="rp-item">
+        <div class="rp-title">卒中中心质控会PPT</div>
+        <div class="rp-meta"><span class="rp-tag ppt">PPT</span> 12分钟前</div>
+      </div>
+      <div class="rp-item">
+        <div class="rp-title">SGLT2抑制剂调研</div>
+        <div class="rp-meta"><span class="rp-tag research">调研</span> 昨天</div>
+      </div>
+      <div class="rp-item">
+        <div class="rp-title">高血压指南总结</div>
+        <div class="rp-meta"><span class="rp-tag doc">文档</span> 昨天</div>
+      </div>
+    </div>
+
+  </div><!-- /main-body -->
+</div><!-- /app-window -->
+
+<!-- ============================================
+     JavaScript
+     ============================================ -->
+<script>
+// =============================================
+// 视图切换
+// =============================================
+function switchView(viewId) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + viewId).classList.add('active');
+  document.querySelectorAll('.sidebar-icon').forEach((el, i) => {
+    el.classList.toggle('active', i === 0 && viewId === 'chat' || i === 1 && viewId === 'ppt' || i === 2 && viewId === 'research');
+  });}
+
+// =============================================
+// 快捷跳转
+// =============================================
+function startPPT() { switchView('ppt'); document.getElementById('ppt-input').focus(); }
+function startResearch() { switchView('research'); document.getElementById('research-input').focus(); }
+function startDocQA() { switchView('chat'); }
+
+// =============================================
+// 对话页 — 发送消息
+// =============================================
+function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  const msgs = document.getElementById('chat-messages');
+  // 用户消息
+  addMsg(msgs, 'user', '👤', text);
+
+  // 模拟 AI 回复
+  setTimeout(() => {
+    if (text.includes('PPT') || text.includes('ppt') || text.includes('课件') || text.includes('汇报')) {
+      addMsg(msgs, 'ai', '🤖', '听起来您需要做一个PPT。我可以帮您！请点击左侧的 <b>📊 做PPT</b>，那里有完整的引导流程～');
+    } else if (text.includes('调研') || text.includes('课题') || text.includes('文献') || text.includes('研究')) {
+      addMsg(msgs, 'ai', '🤖', '好的，我来帮您做课题调研！请点击左侧的 <b>🔬 课题调研</b>，那里有专门的引导流程～');
+    } else if (text.includes('文件') || text.includes('PDF') || text.includes('文档') || text.includes('上传')) {
+      addMsg(msgs, 'ai', '🤖', '您可以上传文件给我，我能帮您总结内容或回答关于文件的问题。点击左侧的 <b>📁 文件</b> 上传即可。');
+    } else {
+      addMsg(msgs, 'ai', '🤖', '好的！我来帮您处理。您可以试试：\n\n• <b>做PPT</b> — 输入主题，自动生成\n• <b>课题调研</b> — 查文献、整报告\n• <b>读文件</b> — 上传PDF/Word提问\n\n点击左侧的对应按钮开始吧！');
+    }
+    scrollBottom(msgs);
+  }, 600);
+}
+
+// =============================================
+// PPT 流程
+// =============================================
+function pptSendMessage() {
+  const input = document.getElementById('ppt-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const msgs = document.getElementById('ppt-messages');
+
+  // 第一步：用户输入主题
+  if (!window.pptStep) {
+    window.pptStep = 1;
+    input.value = '';
+    addMsg(msgs, 'user', '👤', text);
+
+    // AI 模拟生成大纲
+    setTimeout(() => {
+      addMsg(msgs, 'ai', '🤖', '好的，我已经了解了您的需求。我正在整理一份内容大纲，请稍等…⏳');
+      scrollBottom(msgs);
+
+      // 显示进度
+      setTimeout(() => {
+        const progressMsg = msgs.lastElementChild;
+        progressMsg.querySelector('.msg-bubble').innerHTML = `
+          好的，已经根据您的主题整理了一份大纲，您看看是否满意：
+          <div class="outline-card">
+            <div class="item"><span class="num">1</span> 疾病概述与流行病学</div>
+            <div class="item"><span class="num">2</span> 危险因素与发病机制</div>
+            <div class="item"><span class="num">3</span> 诊断标准与评估方法</div>
+            <div class="item"><span class="num">4</span> 治疗策略（药物/非药物）</div>
+            <div class="item"><span class="num">5</span> 预防与患者管理</div>
+            <div class="item"><span class="num">6</span> 最新研究进展</div>
+            <div class="item"><span class="num">7</span> 总结与展望</div>
+          </div>
+          <div style="margin-top:8px;font-size:13px;color:#888;">
+            📐 共 12 页 · 适合 15-20 分钟汇报
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-primary" onclick="pptConfirmOutline(this)">✅ 满意，生成PPT</button>
+            <button class="btn btn-outline" onclick="pptModify(this)">✏️ 调整一下</button>
+            <button class="btn btn-ghost" onclick="pptRegenerate(this)">🔄 重新生成</button>
+          </div>
+        `;
+        scrollBottom(msgs);
+        window.pptStep = 2;
+      }, 1500);
+    }, 800);
+    return;
+  }
+
+  // 后续对话暂不处理
+  input.value = '';
+  addMsg(msgs, 'user', '👤', text);
+  addMsg(msgs, 'ai', '🤖', '好的，我记下了。您可以在上方的大纲中点击「调整」来修改，或者「满意，生成PPT」来直接生成文件。');
+  scrollBottom(msgs);
+}
+
+function pptQuickFill(text) {
+  document.getElementById('ppt-input').value = text;
+}
+
+function pptConfirmOutline(btn) {
+  const msgs = document.getElementById('ppt-messages');
+  btn.disabled = true;
+  btn.textContent = '⏳ 正在生成...';
+
+  addMsg(msgs, 'user', '👤', '大纲没问题，生成吧！');
+  scrollBottom(msgs);
+
+  // 模拟生成进度
+  setTimeout(() => {
+    addMsg(msgs, 'ai', '🤖', `
+      好的，正在为您生成PPT…
+      <div class="progress-bar">
+        <div class="progress-track">
+          <div class="progress-fill" style="width:30%"></div>
+        </div>
+        <span class="progress-label">正在排版…</span>
+      </div>
+    `);
+    scrollBottom(msgs);
+
+    setTimeout(() => {
+      const last = msgs.lastElementChild;
+      last.querySelector('.progress-fill').style.width = '70%';
+      last.querySelector('.progress-label').textContent = '正在添加内容…';
+      scrollBottom(msgs);
+    }, 1200);
+
+    setTimeout(() => {
+      const last = msgs.lastElementChild;
+      last.querySelector('.progress-fill').style.width = '100%';
+      last.querySelector('.progress-label').textContent = '✅ 完成！';
+      scrollBottom(msgs);
+    }, 2500);
+
+    setTimeout(() => {
+      addMsg(msgs, 'ai', '🤖', `
+        ✅ PPT 已生成完毕！
+        <div style="margin-top:8px;padding:12px;background:#f0fff0;border-radius:8px;border-left:3px solid #2e7d32;">
+          <b>📁 文件：</b>高血压基层防治指南解读.pptx<br>
+          <b>📐 页数：</b>12 页<br>
+          <b>📦 大小：</b>约 2.3 MB
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary" onclick="alert('实际运行时打开文件')">📂 打开文件</button>
+          <button class="btn btn-outline" onclick="alert('实际运行时打开所在文件夹')">📁 所在文件夹</button>
+          <button class="btn btn-ghost" onclick="pptStartOver()">🔄 重新做一个</button>
+        </div>
+      `);
+      scrollBottom(msgs);
+      window.pptStep = 3;
+    }, 3500);
+  }, 500);
+}
+
+function pptModify(btn) {
+  const msgs = document.getElementById('ppt-messages');
+  addMsg(msgs, 'ai', '🤖', `
+    好的，您想怎么调整？可以直接告诉我，比如：
+    <div style="margin-top:8px;padding:10px 14px;background:#f5f5f5;border-radius:8px;font-size:13px;color:#666;">
+      · "第三点再展开一些，加上最新的指南推荐"<br>
+      · "在最后加一页总结"<br>
+      · "把第五点和第六点合并"
+    </div>
+  `);
+  scrollBottom(msgs);
+  window.pptStep = 1.5;
+}
+
+function pptRegenerate(btn) {
+  const msgs = document.getElementById('ppt-messages');
+  addMsg(msgs, 'ai', '🤖', '好的，我重新梳理一份大纲…⏳');
+  scrollBottom(msgs);
+  setTimeout(() => {
+    btn.closest('.msg-bubble').querySelector('.outline-card').innerHTML = `
+      <div class="item"><span class="num">1</span> 疾病负担与临床意义</div>
+      <div class="item"><span class="num">2</span> 病因与危险因素分析</div>
+      <div class="item"><span class="num">3</span> 诊断流程与评估工具</div>
+      <div class="item"><span class="num">4</span> 治疗策略与药物选择</div>
+      <div class="item"><span class="num">5</span> 并发症管理与多学科协作</div>
+      <div class="item"><span class="num">6</span> 患者教育与长期随访</div>
+      <div class="item"><span class="num">7</span> 前沿研究与未来方向</div>
+    `;
+    addMsg(msgs, 'ai', '🤖', '更新完了，您看这一版满意吗？');
+    scrollBottom(msgs);
+  }, 1000);
+}
+
+function pptStartOver() {
+  window.pptStep = 0;
+  const msgs = document.getElementById('ppt-messages');
+  msgs.innerHTML = `
+    <div class="msg ai">
+      <div class="msg-avatar">🤖</div>
+      <div class="msg-bubble">
+        好的！我们来做一个PPT。请告诉我：
+        <div style="margin-top:10px;padding:12px;background:#fff5f5;border-radius:8px;border-left:3px solid #c00000;font-size:13.5px;color:#555;">
+          <b>例如：</b>"帮我做一个关于高血压基层防治的PPT，
+          大约12页，面向社区医生，风格简洁专业"
+        </div>
+        <div style="margin-top:10px;display:flex;gap:12px;font-size:13px;color:#888;">
+          <span>📐 也可以上传参考资料，我会参考里面的内容</span>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('ppt-input').value = '';
+  document.getElementById('ppt-input').focus();
+}
+
+// =============================================
+// 课题调研流程
+// =============================================
+function researchSendMessage() {
+  const input = document.getElementById('research-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const msgs = document.getElementById('research-messages');
+
+  if (!window.researchStep) {
+    window.researchStep = 1;
+    input.value = '';
+    addMsg(msgs, 'user', '👤', text);
+
+    setTimeout(() => {
+      addMsg(msgs, 'ai', '🤖', '好的，我来查一下相关文献。正在检索中…⏳');
+      scrollBottom(msgs);
+    }, 500);
+
+    setTimeout(() => {
+      addMsg(msgs, 'ai', '🤖', `
+        已检索到相关文献，为您整理了一份调研报告框架：
+        <div class="outline-card">
+          <div class="item"><span class="num">1</span> 研究背景与临床意义</div>
+          <div class="item"><span class="num">2</span> 国内外研究现状</div>
+          <div class="item"><span class="num">2.1</span> 国际最新临床试验</div>
+          <div class="item"><span class="num">2.2</span> 国内研究进展</div>
+          <div class="item"><span class="num">3</span> 关键机制与作用靶点</div>
+          <div class="item"><span class="num">4</span> 临床疗效与安全性数据</div>
+          <div class="item"><span class="num">5</span> 指南推荐与临床应用</div>
+          <div class="item"><span class="num">6</span> 未来研究方向</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;color:#888;">
+          📚 已引用 15 篇文献（中文 8 篇，英文 7 篇）
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary" onclick="researchConfirm(this)">✅ 满意，生成报告</button>
+          <button class="btn btn-outline" onclick="researchModify()">✏️ 调整框架</button>
+        </div>
+      `);
+      scrollBottom(msgs);
+      window.researchStep = 2;
+    }, 2000);
+    return;
+  }
+
+  input.value = '';
+  addMsg(msgs, 'user', '👤', text);
+  addMsg(msgs, 'ai', '🤖', '好的，我记下了。您可以在上方的大纲中点击「调整」来修改框架。');
+  scrollBottom(msgs);
+}
+
+function researchQuickFill(text) {
+  document.getElementById('research-input').value = text;
+}
+
+function researchConfirm(btn) {
+  const msgs = document.getElementById('research-messages');
+  btn.disabled = true;
+  btn.textContent = '⏳ 正在生成...';
+
+  addMsg(msgs, 'user', '👤', '框架没问题，生成报告吧！');
+  scrollBottom(msgs);
+
+  setTimeout(() => {
+    addMsg(msgs, 'ai', '🤖', `
+      正在整理文献、撰写报告…
+      <div class="progress-bar">
+        <div class="progress-track">
+          <div class="progress-fill" style="width:45%"></div>
+        </div>
+        <span class="progress-label">正在阅读文献…</span>
+      </div>
+    `);
+    scrollBottom(msgs);
+  }, 500);
+
+  setTimeout(() => {
+    const last = msgs.lastElementChild;
+    last.querySelector('.progress-fill').style.width = '80%';
+    last.querySelector('.progress-label').textContent = '正在撰写报告…';
+    scrollBottom(msgs);
+  }, 2500);
+
+  setTimeout(() => {
+    const last = msgs.lastElementChild;
+    last.querySelector('.progress-fill').style.width = '100%';
+    last.querySelector('.progress-label').textContent = '✅ 完成！';
+    scrollBottom(msgs);
+  }, 4000);
+
+  setTimeout(() => {
+    addMsg(msgs, 'ai', '🤖', `
+      ✅ 调研报告已生成完毕！
+      <div style="margin-top:8px;padding:12px;background:#e8f4ff;border-radius:8px;border-left:3px solid #0066cc;">
+        <b>📁 文件：</b>SGLT2抑制剂在心力衰竭治疗中的研究进展.docx<br>
+        <b>📄 页数：</b>8 页（含摘要和参考文献）<br>
+        <b>📚 引用：</b>15 篇文献<br>
+        <b>🔤 语言：</b>中文（附英文摘要）
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-primary" onclick="alert('实际运行时打开文件')">📂 打开文件</button>
+        <button class="btn btn-outline" onclick="alert('实际运行时打开所在文件夹')">📁 所在文件夹</button>
+        <button class="btn btn-ghost" onclick="researchStartOver()">🔄 重新调研</button>
+      </div>
+    `);
+    scrollBottom(msgs);
+    window.researchStep = 3;
+  }, 5000);
+}
+
+function researchModify() {
+  const msgs = document.getElementById('research-messages');
+  addMsg(msgs, 'ai', '🤖', `
+    您想怎么调整框架？可以直接告诉我，比如：
+    <div style="margin-top:8px;padding:10px 14px;background:#f5f5f5;border-radius:8px;font-size:13px;color:#666;">
+      · "加一个章节写药物经济学数据"<br>
+      · "把安全性和疗效合并"<br>
+      · "多引用2025年以后的文献"
+    </div>
+  `);
+  scrollBottom(msgs);
+}
+
+function researchStartOver() {
+  window.researchStep = 0;
+  const msgs = document.getElementById('research-messages');
+  msgs.innerHTML = `
+    <div class="msg ai">
+      <div class="msg-avatar">🤖</div>
+      <div class="msg-bubble">
+        好的！我来帮你做课题调研。请告诉我：
+        <div style="margin-top:10px;padding:12px;background:#e8f4ff;border-radius:8px;border-left:3px solid #0066cc;font-size:13.5px;color:#555;">
+          <b>例如：</b>"帮我查一下近三年mRNA疫苗在
+          肿瘤治疗中的临床研究进展"
+        </div>
+        <div style="margin-top:10px;font-size:13px;color:#888;">
+          📚 我会联网检索相关文献，整理成调研报告
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('research-input').value = '';
+  document.getElementById('research-input').focus();
+}
+
+// =============================================
+// 工具函数
+// =============================================
+function addMsg(container, role, avatar, html) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-bubble">${html}</div>
+  `;
+  container.appendChild(div);
+  scrollBottom(container);
+}
+
+function scrollBottom(container) {
+  setTimeout(() => { container.scrollTop = container.scrollHeight; }, 50);
+}
+
+// =============================================
+// 自动调整 textarea 高度
+// =============================================
+document.querySelectorAll('textarea').forEach(ta => {
+  ta.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+});
+
+// =============================================
+// 拖拽文件支持 — 所有输入区
+// =============================================
+function setupDragDrop(areaId, viewName) {
+  const area = document.getElementById(areaId);
+  if (!area) return;
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    area.addEventListener(evt, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      area.classList.add('drag-over');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(evt => {
+    area.addEventListener(evt, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      area.classList.remove('drag-over');
+    });
+  });
+
+  area.addEventListener('drop', e => {
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileDrop(files[0], viewName);
+    }
+  });
+}
+
+function handleFileDrop(file, viewName) {
+  const fileName = file.name;
+  const fileType = fileName.split('.').pop().toLowerCase();
+  const iconMap = { 'pdf': '📄', 'docx': '📝', 'doc': '📝', 'pptx': '📊', 'ppt': '📊', 'txt': '📄', 'xlsx': '📊', 'xls': '📊' };
+  const icon = iconMap[fileType] || '📎';
+
+  let msgs, inputId;
+  if (viewName === 'chat') {
+    msgs = document.getElementById('chat-messages');
+    inputId = 'chat-input';
+  } else if (viewName === 'ppt') {
+    msgs = document.getElementById('ppt-messages');
+    inputId = 'ppt-input';
+  } else {
+    msgs = document.getElementById('research-messages');
+    inputId = 'research-input';
+  }
+
+  // 显示文件已上传的消息
+  addMsg(msgs, 'user', '👤', `${icon} <b>${fileName}</b> 已上传`);
+  scrollBottom(msgs);
+
+  setTimeout(() => {
+    if (viewName === 'ppt') {
+      addMsg(msgs, 'ai', '🤖', `已收到 <b>${fileName}</b> ✅ 我会参考这份资料来制作PPT。请告诉我您的PPT主题和要求👇`);
+    } else if (viewName === 'research') {
+      addMsg(msgs, 'ai', '🤖', `已收到 <b>${fileName}</b> ✅ 我会在研究报告中引用这份资料。请告诉我您的研究方向👇`);
+    } else {
+      addMsg(msgs, 'ai', '🤖', `已收到 <b>${fileName}</b> ✅ 我已读取文件内容，您可以问我关于这份文件的问题了。`);
+    }
+    scrollBottom(msgs);
+  }, 500);
+}
+
+function simulateFileDrop(viewName) {
+  // 原型模拟：点击上传按钮的效果
+  const fileName = viewName === 'ppt' ? '2025中国高血压防治指南.pdf'
+                : viewName === 'research' ? '综述_SGLT2抑制剂心衰进展.pdf'
+                : '科室2025年工作总结.docx';
+  const fakeFile = { name: fileName };
+  handleFileDrop(fakeFile, viewName);
+}
+
+// 初始化所有输入区的拖拽
+setupDragDrop('chat-input-area', 'chat');
+setupDragDrop('ppt-input-area', 'ppt');
+setupDragDrop('research-input-area', 'research');
+</script>
+
+</body>
+</html>

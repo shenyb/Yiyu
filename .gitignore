@@ -1,0 +1,29 @@
+# Java
+java/target/
+java/*.jar
+java/*.war
+java/.sts4-cache/
+java/.springBeans/
+
+# Vue / Node
+web/node_modules/
+web/dist/
+web/.vite/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+*.local.yml
+
+# Runtime
+runtime/
+output/
+templates/
