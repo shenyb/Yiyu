@@ -134,7 +134,7 @@ async function confirmOutline() {
           <b>📦 大小：</b>${formatSize(result.fileSize)}
         </div>
         <div class="card-actions">
-          <button class="btn btn-primary" onclick="window.open('/api/ppt/download/${result.fileName}')">📂 打开文件</button>
+          <button class="btn btn-primary" onclick="window.open('/api/ppt/download?file='+encodeURIComponent('${result.fileName}'))">📂 打开文件</button>
           <button class="btn btn-ghost" onclick="document.dispatchEvent(new CustomEvent('ppt-restart'))">🔄 重新做一个</button>
         </div>`
       step.value = 2

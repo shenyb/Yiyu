@@ -143,12 +143,13 @@ public class ResearchController {
     /**
      * 下载报告
      */
-    @GetMapping("/download/{fileName}")
-    public ResponseEntity<byte[]> download(@PathVariable String fileName) {
+    @GetMapping("/download")
+    public ResponseEntity<byte[]> download(@RequestParam String file) {
         try {
-            File file = new File(System.getProperty("user.home") + "/yiyu/output", fileName);
-            if (!file.exists()) return ResponseEntity.notFound().build();
-            byte[] content = Files.readAllBytes(file.toPath());
+            String fileName = file;
+            File localFile = new File(System.getProperty("user.home") + "/yiyu/output", fileName);
+            if (!localFile.exists()) return ResponseEntity.notFound().build();
+            byte[] content = Files.readAllBytes(localFile.toPath());
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20"))
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
