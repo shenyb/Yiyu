@@ -24,6 +24,10 @@ Thumbs.db
 *.local.yml
 *-secret.yml
 
+# Distribution
+dist/
+*.zip
+
 # Runtime
 runtime/
 output/
