@@ -89,6 +89,16 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<!-- JavaFX 插件：处理模块路径，`mvnw javafx:run` 可启动桌面窗口 -->
+			<plugin>
+				<groupId>org.openjfx</groupId>
+				<artifactId>javafx-maven-plugin</artifactId>
+				<version>0.1.0</version>
+				<configuration>
+					<mainClass>com.yiyu.desktop.YiyuDesktop</mainClass>
+					<compress>true</compress>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 
