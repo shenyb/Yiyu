@@ -10,8 +10,12 @@ web/node_modules/
 web/dist/
 web/.vite/
 
-# IDE
-.idea/
+# IDE — 共享项目配置（JDK、运行配置等）
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/shelf/
+.idea/dictionaries/
+.idea/gradle.xml
 *.iml
 .vscode/
 
