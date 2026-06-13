@@ -150,7 +150,7 @@ public class ResearchController {
             if (!file.exists()) return ResponseEntity.notFound().build();
             byte[] content = Files.readAllBytes(file.toPath());
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20"))
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .body(content);
         } catch (Exception e) {

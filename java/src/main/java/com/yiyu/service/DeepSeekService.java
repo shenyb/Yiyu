@@ -16,7 +16,7 @@ public class DeepSeekService {
             .connectTimeout(Duration.ofSeconds(30))
             .build();
 
-    @Value("${deepseek.apikey}")
+    @Value("${deepseek.api-key}")
     private String apiKey;
 
     @Value("${deepseek.base-url}")
