@@ -22,71 +22,167 @@
         <div class="msg-bubble" v-html="msg.content"></div>
       </div>
     </div>
-    <div class="input-area">
+    <div class="input-area" @dragover.prevent="dragOver=true" @dragleave="dragOver=false" @drop.prevent="onDrop" :class="{'drag-over':dragOver}">
+      <div class="drop-indicator">📄 松开以添加参考文献</div>
       <div class="input-row">
-        <textarea v-model="inputText" placeholder="输入研究方向…" rows="1" @keydown.enter.exact="sendMessage" @input="autoResize"></textarea>
-        <button class="send-btn" :disabled="!inputText.trim()" @click="sendMessage">↵</button>
+        <textarea v-model="inputText" placeholder="输入研究方向…" rows="1" @keydown.enter.exact="sendMessage" @input="autoResize" :disabled="loading"></textarea>
+        <button class="send-btn" :disabled="!inputText.trim()||loading" @click="sendMessage">↵</button>
       </div>
       <div class="input-hint">
         <span>💡 可指定：研究方向、时间范围、语言</span>
         <span style="color:#0066cc;cursor:pointer;" @click="inputText='帮我查一下近三年SGLT2抑制剂在心力衰竭治疗中的临床研究进展，包含中文和英文文献'">点此填入示例</span>
+        <span class="file-btn" @click="triggerFileInput">📎 拖拽文献到此</span>
       </div>
+      <input type="file" ref="fileInput" style="display:none" accept=".pdf,.docx,.doc,.txt" @change="onFileSelected" />
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, nextTick } from 'vue'
+import { generateOutline, confirmPpt, uploadFile } from '../api/index.js'
+
 const messages = ref([])
 const inputText = ref('')
+const loading = ref(false)
+const dragOver = ref(false)
+const step = ref(0)
+const outline = ref(null)
+const uploadedFiles = ref([])
 const msgContainer = ref(null)
+const fileInput = ref(null)
+
 function autoResize(e) { e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,120)+'px' }
 function addMsg(role, content) {
   messages.value.push({role, content})
   nextTick(() => { if(msgContainer.value) msgContainer.value.scrollTop = msgContainer.value.scrollHeight })
 }
-function sendMessage() {
-  const text = inputText.value.trim(); if(!text) return
-  inputText.value = ''; addMsg('user', text)
-  addMsg('ai', '好的，我来检索相关文献，请稍等...⏳')
-  setTimeout(() => {
-    const last = messages.value[messages.value.length-1]
-    last.content = `已为您整理了一份调研报告框架：
-      <div class="outline-card">
-        <div class="item"><span class="num">1</span> 研究背景与临床意义</div>
-        <div class="item"><span class="num">2</span> 国内外研究现状</div>
-        <div class="item"><span class="num">3</span> 关键机制与作用靶点</div>
-        <div class="item"><span class="num">4</span> 临床疗效与安全性数据</div>
-        <div class="item"><span class="num">5</span> 未来研究方向</div>
-      </div>
-      <div class="card-actions">
-        <button class="btn btn-primary" @click="confirmReport">✅ 满意，生成报告</button>
-        <button class="btn btn-outline">✏️ 调整框架</button>
-      </div>`
-  }, 2000)
+function triggerFileInput() { fileInput.value?.click() }
+function onFileSelected(e) { const f=e.target.files[0]; if(f) handleFile(f) }
+function onDrop(e) { dragOver.value=false; const f=e.dataTransfer.files[0]; if(f) handleFile(f) }
+
+async function handleFile(file) {
+  const iconMap = { pdf:'📄', docx:'📝', doc:'📝', pptx:'📊', txt:'📄' }
+  const ext = file.name.split('.').pop().toLowerCase()
+  addMsg('user', `${iconMap[ext]||'📎'} <b>${file.name}</b> 已上传`)
+  try {
+    const res = await uploadFile(file)
+    const fileId = res.data?.data?.fileId
+    if (fileId) uploadedFiles.value.push(fileId)
+    addMsg('ai', `已收到 <b>${file.name}</b> ✅ 我会在研究报告中引用。请告诉我研究方向👇`)
+  } catch {
+    addMsg('ai', '文件上传失败😅')
+  }
 }
-function confirmReport() {
+
+async function sendMessage() {
+  const text = inputText.value.trim()
+  if (!text || loading.value) return
+  inputText.value = ''
+  loading.value = true
+  addMsg('user', text)
+
+  if (step.value === 0) {
+    addMsg('ai', '好的，我来检索相关文献，请稍等...⏳')
+    try {
+      const res = await generateOutline(text, uploadedFiles.value)
+      outline.value = res.data?.data
+      if (outline.value?.slides?.length) {
+        const slides = outline.value.slides
+        let itemsHtml = slides.map((s, i) =>
+          `<div class="item"><span class="num">${i+1}</span> ${escapeHtml(s.title||'')}</div>`
+        ).join('')
+        updateLastMsg(`已为您整理了一份调研报告框架：
+          <div class="outline-card">${itemsHtml}</div>
+          <div style="margin-top:8px;font-size:13px;color:#888;">
+            📚 主题：${escapeHtml(outline.value.pptTitle||'')}
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-primary" onclick="document.dispatchEvent(new CustomEvent('research-confirm'))">✅ 满意，生成报告</button>
+            <button class="btn btn-outline" onclick="document.dispatchEvent(new CustomEvent('research-modify'))">✏️ 调整框架</button>
+          </div>`)
+        step.value = 1
+      } else {
+        updateLastMsg('没成功生成框架，换个说法试试？')
+      }
+    } catch {
+      updateLastMsg('检索失败，请稍后重试😅')
+    }
+  } else {
+    addMsg('ai', '好的，已记录。请在上方点击「满意，生成报告」或继续调整。')
+  }
+  loading.value = false
+}
+
+async function confirmReport() {
+  if (!outline.value) return
+  loading.value = true
   addMsg('user', '框架没问题，生成报告吧！')
-  addMsg('ai', '正在撰写报告…⏳')
-  setTimeout(() => {
-    const last = messages.value[messages.value.length-1]
-    last.content = `✅ 调研报告已生成完毕！
-      <div style="margin-top:8px;padding:12px;background:#e8f4ff;border-radius:8px;border-left:3px solid #0066cc;">
-        <b>📁 文件：</b>SGLT2抑制剂心衰研究进展调研报告.docx<br>
-        <b>📚 引用：</b>15 篇文献
-      </div>
-      <div class="card-actions">
-        <button class="btn btn-primary">📂 打开文件</button>
-        <button class="btn btn-ghost">🔄 重新调研</button>
-      </div>`
-  }, 3000)
+  addMsg('ai', '正在整理文献、撰写报告…⏳')
+
+  try {
+    const res = await confirmPpt(outline.value)
+    const result = res.data?.data
+    if (result) {
+      updateLastMsg(`✅ 调研报告已生成完毕！
+        <div style="margin-top:8px;padding:12px;background:#e8f4ff;border-radius:8px;border-left:3px solid #0066cc;">
+          <b>📁 文件：</b>${result.fileName}<br>
+          <b>📐 页数：</b>${result.slideCount} 页<br>
+          <b>📦 大小：</b>${formatSize(result.fileSize)}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary" onclick="window.open('/api/ppt/download/${result.fileId}','_blank')">📂 打开文件</button>
+          <button class="btn btn-ghost" onclick="document.dispatchEvent(new CustomEvent('research-restart'))">🔄 重新调研</button>
+        </div>`)
+      step.value = 2
+    }
+  } catch {
+    updateLastMsg('生成报告失败，请稍后重试😅')
+  }
+  loading.value = false
 }
+
+function modifyOutline() {
+  addMsg('ai', `您想怎么调整框架？可以直接告诉我，比如：
+    <div style="margin-top:8px;padding:10px 14px;background:#f5f5f5;border-radius:8px;font-size:13px;color:#666;">
+      · "加一个章节写药物经济学数据"<br>
+      · "把安全性和疗效合并"<br>
+      · "多引用2025年以后的文献"
+    </div>`)
+}
+
+function startOver() {
+  step.value = 0; outline.value = null; messages.value = []; uploadedFiles.value = []; inputText.value = ''
+}
+
+function updateLastMsg(html) {
+  if (messages.value.length) {
+    messages.value[messages.value.length-1].content = html
+    nextTick(() => { if(msgContainer.value) msgContainer.value.scrollTop = msgContainer.value.scrollHeight })
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div'); div.textContent = str; return div.innerHTML
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '未知'
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB'
+  return (bytes/1024/1024).toFixed(1) + ' MB'
+}
+
+document.addEventListener('research-confirm', confirmReport)
+document.addEventListener('research-modify', modifyOutline)
+document.addEventListener('research-restart', startOver)
 </script>
 
 <style scoped>
 .chat-panel{flex:1;display:flex;flex-direction:column;background:#f7f8fa;min-width:0}
 .chat-header{padding:16px 20px 12px;border-bottom:1px solid #e8e8ec;background:#fff;flex-shrink:0}
 .chat-header h2{font-size:16px;font-weight:600;color:#1a1a2e;display:flex;align-items:center;gap:8px}
+.chat-header h2 .badge{font-size:11px;font-weight:400;background:#0066cc;color:#fff;padding:1px 10px;border-radius:10px}
 .chat-header p{font-size:13px;color:#888;margin-top:2px}
 .messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
 .msg{display:flex;gap:10px;max-width:85%;animation:fadeIn .25s ease}
@@ -110,13 +206,19 @@ function confirmReport() {
 .card-actions .btn-outline:hover{background:#e8f4ff}
 .card-actions .btn-ghost{background:transparent;color:#666;border:1px solid #ddd}
 .card-actions .btn-ghost:hover{background:#f5f5f5}
-.input-area{padding:12px 16px 14px;background:#fff;border-top:1px solid #e8e8ec;flex-shrink:0}
+.input-area{padding:12px 16px 14px;background:#fff;border-top:1px solid #e8e8ec;flex-shrink:0;position:relative}
+.input-area.drag-over textarea{border-color:#0066cc;background:#e8f4ff}
+.drop-indicator{display:none;position:absolute;inset:0;background:rgba(0,102,204,0.04);border:2px dashed #0066cc;border-radius:10px;align-items:center;justify-content:center;font-size:15px;color:#0066cc;font-weight:500;pointer-events:none;z-index:10}
+.input-area.drag-over .drop-indicator{display:flex}
 .input-row{display:flex;gap:10px;align-items:flex-end}
 .input-row textarea{flex:1;border:1px solid #ddd;border-radius:10px;padding:10px 14px;font-size:14px;font-family:inherit;resize:none;height:44px;line-height:1.5;outline:none}
 .input-row textarea:focus{border-color:#0066cc}
+.input-row textarea:disabled{background:#f5f5f5}
 .input-row .send-btn{width:44px;height:44px;border-radius:10px;border:none;background:#0066cc;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .input-row .send-btn:disabled{background:#ccc;cursor:not-allowed}
 .input-hint{font-size:12px;color:#aaa;margin-top:6px;padding-left:4px;display:flex;gap:14px;align-items:center}
+.input-hint .file-btn{color:#0066cc;cursor:pointer;font-size:13px;display:inline-flex;gap:4px}
+.input-hint .file-btn:hover{color:#004499}
 ::-webkit-scrollbar{width:6px}
 ::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}
 </style>

@@ -42,7 +42,7 @@
 			<scope>test</scope>
 		</dependency>
 
-		<!-- Apache POI (PPT 读写) -->
+	<!-- Apache POI (PPT 读写) -->
 		<dependency>
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi-ooxml</artifactId>

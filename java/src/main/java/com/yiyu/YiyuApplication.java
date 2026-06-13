@@ -15,15 +15,25 @@ public class YiyuApplication {
     }
 
     private static boolean shouldLaunchDesktop(String[] args) {
-        for (String arg : args) {
-            if ("--headless".equals(arg) || "-h".equals(arg)) {
-                return false;
-            }
+        // 系统属性或环境变量可强制控制
+        if ("true".equals(System.getProperty("yiyu.headless"))
+                || "true".equals(System.getenv("YIYU_HEADLESS"))) {
+            return false;
         }
+        if ("true".equals(System.getProperty("yiyu.desktop"))
+                || "true".equals(System.getenv("YIYU_DESKTOP"))) {
+            return true;
+        }
+        // 命令行参数
+        for (String arg : args) {
+            if ("--headless".equals(arg) || "-h".equals(arg)) return false;
+            if ("--desktop".equals(arg) || "-d".equals(arg)) return true;
+        }
+        // 自动检测
         try {
             Class.forName("javafx.application.Application");
-            // 有桌面环境才弹窗口（spring-boot:run 在终端里不弹）
-            return !java.awt.GraphicsEnvironment.isHeadless();
+            boolean headless = java.awt.GraphicsEnvironment.isHeadless();
+            return !headless;
         } catch (Exception e) {
             return false;
         }
