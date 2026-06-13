@@ -1,0 +1,10 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: yiyu
+
+deepseek:
+  api-key: "${DEEPSEEK_API_KEY:***}"
+  base-url: https://api.deepseek.com
+  model: deepseek-chat
