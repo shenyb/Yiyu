@@ -23,7 +23,7 @@
     <div class="input-area" @dragover.prevent="dragOver=true" @dragleave="dragOver=false" @drop.prevent="onDrop" :class="{'drag-over':dragOver}">
       <div class="drop-indicator">📄 松开以添加文件</div>
       <div class="input-row">
-        <textarea v-model="inputText" placeholder="上传文件后，输入问题…" rows="1" @keydown.enter.exact="sendMessage" @input="autoResize" :disabled="!hasFile||loading"></textarea>
+        <textarea v-model="inputText" placeholder="上传文件后，输入问题…" rows="1" @keydown.enter.prevent="sendMessage" @input="autoResize" :disabled="!hasFile||loading"></textarea>
         <button class="send-btn" :disabled="!inputText.trim()||!hasFile||loading" @click="sendMessage">↵</button>
       </div>
       <div class="input-hint">
@@ -66,8 +66,16 @@ function onFileSelected(e) {
 function onDrop(e) { dragOver.value=false; const f=e.dataTransfer.files[0]; if(f) handleFile(f) }
 
 async function loadFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase()
+  const textExts = ['txt', 'md', 'json', 'csv', 'xml', 'yaml', 'yml']
+
+  if (!textExts.includes(ext)) {
+    const last = messages.value[messages.value.length-1]
+    last.content = `已收到 <b>${file.name}</b> ✅<br>桌面版可直接打开此格式。浏览器中当前仅支持 txt/md/json 文本文件。`
+    return
+  }
+
   try {
-    // 使用浏览器 File API 读取文件内容
     const text = await file.text()
     const res = await axios.post('/api/docqa/load', {
       sessionId: sessionId,

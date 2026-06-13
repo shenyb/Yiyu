@@ -25,7 +25,7 @@
     <div class="input-area" @dragover.prevent="dragOver=true" @dragleave="dragOver=false" @drop.prevent="onDrop" :class="{'drag-over':dragOver}">
       <div class="drop-indicator">📄 松开以添加参考文献</div>
       <div class="input-row">
-        <textarea v-model="inputText" placeholder="输入研究方向…" rows="1" @keydown.enter.exact="sendMessage" @input="autoResize" :disabled="loading"></textarea>
+        <textarea v-model="inputText" placeholder="输入研究方向…" rows="1" @keydown.enter.prevent="sendMessage" @input="autoResize" :disabled="loading"></textarea>
         <button class="send-btn" :disabled="!inputText.trim()||loading" @click="sendMessage">↵</button>
       </div>
       <div class="input-hint">

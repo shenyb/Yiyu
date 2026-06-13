@@ -27,6 +27,8 @@ public class PptService {
      * 根据主题生成 PPT 大纲 (JSON)
      */
     public String generateOutline(String topic, String referenceContent) throws Exception {
+        log.info(">>> generateOutline() topic={}, refLen={}", topic,
+                referenceContent != null ? referenceContent.length() : 0);
         String ref = (referenceContent != null && !referenceContent.isBlank())
                 ? "\n\n参考文档内容：\n" + referenceContent + "\n\n请基于以上参考内容生成大纲。"
                 : "";
@@ -59,13 +61,17 @@ public class PptService {
                 prompt
         );
 
-        return extractJsonFromResponse(raw);
+        String result = extractJsonFromResponse(raw);
+        log.info("<<< generateOutline() outlineLen={}", result.length());
+        return result;
     }
 
     /**
      * 根据确认的大纲生成 PPT 文件
      */
     public File generatePpt(String outlineJson, String templatePath, String outputDir) throws Exception {
+        log.info(">>> generatePpt() templatePath={}, outputDir={}", templatePath, outputDir);
+        log.debug("outlineJson={}", outlineJson.length() > 500 ? outlineJson.substring(0, 500) + "..." : outlineJson);
         JsonNode outline = mapper.readTree(outlineJson);
 
         // 确保输出目录存在
@@ -80,11 +86,10 @@ public class PptService {
         if (templatePath != null && !templatePath.isBlank() && new File(templatePath).exists()) {
             generateFromTemplate(outline, templatePath, output);
         } else {
-            // 没有模板时，用 POI 直接创建
             generateFromScratch(outline, output);
         }
 
-        log.info("PPT generated: {}", output.getAbsolutePath());
+        log.info("<<< generatePpt() file={}, size={}B", output.getName(), output.length());
         return output;
     }
 

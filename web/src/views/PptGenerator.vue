@@ -25,7 +25,7 @@
     <div class="input-area" @dragover.prevent="dragOver=true" @dragleave="dragOver=false" @drop.prevent="onDrop" :class="{ 'drag-over': dragOver }">
       <div class="drop-indicator">📄 松开以添加文件作为参考</div>
       <div class="input-row">
-        <textarea v-model="inputText" placeholder="输入PPT主题和要求…" rows="1" @keydown.enter.exact="sendMessage" @input="autoResize" :disabled="loading"></textarea>
+        <textarea v-model="inputText" placeholder="输入PPT主题和要求…" rows="1" @keydown.enter.prevent="sendMessage" @input="autoResize" :disabled="loading"></textarea>
         <button class="send-btn" :disabled="!inputText.trim() || loading" @click="sendMessage">↵</button>
       </div>
       <div class="input-hint">
@@ -86,8 +86,8 @@ function handleFile(file) {
   const iconMap = { pdf: '📄', docx: '📝', doc: '📝', pptx: '📊', txt: '📄' }
   const ext = file.name.split('.').pop().toLowerCase()
   const icon = iconMap[ext] || '📎'
-  addMsg('user', `${icon} <b>${file.name}</b> 已上传`)
-  addMsg('ai', `已收到 <b>${file.name}</b> ✅ 请告诉我您的PPT主题和要求👇`)
+  addMsg('user', `${icon} <b>${file.name}</b> 已选择`)
+  addMsg('ai', `已收到 <b>${file.name}</b> ✅ 请在输入框中告诉我PPT主题和要求。传文件做参考的功能待完善。`)
 }
 
 async function sendMessage() {

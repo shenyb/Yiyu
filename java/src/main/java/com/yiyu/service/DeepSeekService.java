@@ -1,5 +1,7 @@
 package com.yiyu.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -11,6 +13,8 @@ import java.time.Duration;
 
 @Service
 public class DeepSeekService {
+
+    private static final Logger log = LoggerFactory.getLogger(DeepSeekService.class);
 
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -25,10 +29,12 @@ public class DeepSeekService {
     @Value("${deepseek.model}")
     private String model;
 
-    /**
-     * 调用 DeepSeek Chat API (OpenAI 兼容格式)
-     */
     public String chat(String systemPrompt, String userMessage) throws Exception {
+        log.info(">>> chat() model={}, promptLen={}, msgLen={}", model,
+                systemPrompt.length(), userMessage.length());
+        log.debug("prompt={}", truncate(systemPrompt, 200));
+        log.debug("message={}", truncate(userMessage, 200));
+
         String body = buildRequestBody(systemPrompt, userMessage);
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -39,19 +45,25 @@ public class DeepSeekService {
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
+        long t0 = System.currentTimeMillis();
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        long elapsed = System.currentTimeMillis() - t0;
 
         if (response.statusCode() != 200) {
+            log.error("<<< chat() FAIL status={}, elapsed={}ms, body={}",
+                    response.statusCode(), elapsed, truncate(response.body(), 300));
             throw new RuntimeException("DeepSeek API error: " + response.statusCode() + " " + response.body());
         }
 
-        return parseResponse(response.body());
+        String result = parseResponse(response.body());
+        log.info("<<< chat() OK status=200, elapsed={}ms, replyLen={}", elapsed, result.length());
+        return result;
     }
 
-    /**
-     * 调用 DeepSeek Chat API，返回原始 JSON 响应（用于结构化数据）
-     */
     public String chatRaw(String systemPrompt, String userMessage) throws Exception {
+        log.info(">>> chatRaw() model={}, promptLen={}, msgLen={}", model,
+                systemPrompt.length(), userMessage.length());
+
         String body = buildRequestBody(systemPrompt, userMessage);
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -62,26 +74,23 @@ public class DeepSeekService {
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
+        long t0 = System.currentTimeMillis();
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        long elapsed = System.currentTimeMillis() - t0;
 
         if (response.statusCode() != 200) {
+            log.error("<<< chatRaw() FAIL status={}, elapsed={}ms, body={}",
+                    response.statusCode(), elapsed, truncate(response.body(), 300));
             throw new RuntimeException("DeepSeek API error: " + response.statusCode() + " " + response.body());
         }
 
+        log.info("<<< chatRaw() OK status=200, elapsed={}ms, rawLen={}", elapsed, response.body().length());
         return response.body();
     }
 
-    public String getApiKey() {
-        return apiKey;
-    }
-
-    public String getBaseUrl() {
-        return baseUrl;
-    }
-
-    public String getModel() {
-        return model;
-    }
+    public String getApiKey() { return apiKey; }
+    public String getBaseUrl() { return baseUrl; }
+    public String getModel() { return model; }
 
     private String buildRequestBody(String systemPrompt, String userMessage) {
         return """
@@ -96,7 +105,7 @@ public class DeepSeekService {
     }
 
     private String parseResponse(String json) {
-        // 简单解析：提取 content 字段
+        log.debug("parseResponse raw={}", truncate(json, 500));
         int start = json.indexOf("\"content\":\"");
         if (start == -1) return "（AI 回复解析失败）";
         start += 11;
@@ -113,5 +122,9 @@ public class DeepSeekService {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    private String truncate(String s, int max) {
+        return s == null ? "null" : (s.length() <= max ? s : s.substring(0, max) + "...");
     }
 }
