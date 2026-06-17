@@ -3,8 +3,13 @@ server:
 spring:
   application:
     name: yiyu
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
 
 deepseek:
   api-key: "${DEEPSEEK_API_KEY:}"
   base-url: https://api.deepseek.com
-  model: deepseek-v4-flash
+  model: deepseek-chat
+  timeout-seconds: 180

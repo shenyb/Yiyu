@@ -8,6 +8,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -28,6 +29,26 @@ public class ResearchController {
     }
 
     /**
+     * P1-04: 上传参考文件，返回文件内容文本
+     */
+    @PostMapping("/upload-ref")
+    public Map<String, Object> uploadRef(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return Map.of("success", false, "error", "未选择文件");
+        }
+        try {
+            File tempFile = File.createTempFile("yiyu-research-ref-", "-" + file.getOriginalFilename());
+            file.transferTo(tempFile);
+            String text = docParser.extractText(tempFile);
+            tempFile.delete();
+            return Map.of("success", true, "fileName", file.getOriginalFilename(), "content", text);
+        } catch (Exception e) {
+            log.error("Research upload-ref failed", e);
+            return Map.of("success", false, "error", String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
      * 生成调研报告大纲
      */
     @PostMapping("/generate-outline")
@@ -35,6 +56,8 @@ public class ResearchController {
         String topic = (String) body.getOrDefault("topic", "");
         @SuppressWarnings("unchecked")
         List<String> fileIds = (List<String>) body.getOrDefault("fileIds", List.of());
+        // P1-04: 前端上传文件后直接传 reference 文本
+        String referenceText = (String) body.getOrDefault("reference", "");
 
         try {
             // 读取参考文件
@@ -45,6 +68,10 @@ public class ResearchController {
                     String text = docParser.extractText(file);
                     refContent.append("\n--- 参考文件：").append(file.getName()).append(" ---\n").append(text).append("\n");
                 }
+            }
+            // P1-04: 前端通过 upload-ref 接口上传后直接传来的 reference 文本
+            if (referenceText != null && !referenceText.isBlank()) {
+                refContent.append("\n--- 参考文件内容 ---\n").append(referenceText).append("\n");
             }
 
             String ref = refContent.length() > 0
@@ -58,6 +85,7 @@ public class ResearchController {
                     - 包含中文和英文文献的检索思路
                     - 结构完整的报告框架（背景、现状、机制、临床数据、未来方向）
                     - 每个章节注明需要涵盖的关键内容
+                    - 【重要】每个要点必须注明文献来源，格式为 [出处: 作者/年份/期刊]，如无法确定则标注 [出处: 待核实]
 
                     请以JSON格式返回（纯JSON，不要markdown代码块）：
                     {
@@ -66,13 +94,14 @@ public class ResearchController {
                         {
                           "title": "章节标题",
                           "content": "章节描述",
-                          "subPoints": ["要点1", "要点2"]
+                          "subPoints": ["要点1 [出处: 作者/年份/期刊]", "要点2 [出处: 作者/年份/期刊]"],
+                          "reference": "本章节主要参考文献"
                         }
                       ]
                     }
                     """.formatted(topic, ref);
 
-            String raw = deepSeek.chatRaw("你是一个医学课题调研专家。只返回JSON，不要额外文字。", prompt);
+            String raw = deepSeek.chatRaw("你是一个医学课题调研专家。只返回JSON，不要额外文字。医学内容必须标注出处，不得编造文献。", prompt);
             String outline = extractJson(raw);
 
             Map<String, Object> result = new HashMap<>();
@@ -81,10 +110,11 @@ public class ResearchController {
             return result;
 
         } catch (Exception e) {
-            log.error("Research outline failed", e);
+            log.error("Research outline failed, topic={}, referenceLen={}", topic,
+                    referenceText == null ? 0 : referenceText.length(), e);
             Map<String, Object> result = new HashMap<>();
             result.put("success", false);
-            result.put("error", e.getMessage());
+            result.put("error", e.getMessage() != null ? e.getMessage() : e.getClass().getName());
             return result;
         }
     }
@@ -105,10 +135,12 @@ public class ResearchController {
                     %s
 
                     请生成完整的报告文字内容，包含每个章节的详细论述。
+                    【重要】所有医学观点和数据必须标注出处，格式为[出处: 作者/年份/期刊]。
+                    如无法确定具体出处，请标注[出处: 待核实]，提醒读者需要核实。
                     """.formatted(outlineJson);
 
             String reportText = deepSeek.chat(
-                    "你是一个医学课题调研专家。生成详细、专业的调研报告文字。",
+                    "你是一个医学课题调研专家。生成详细、专业的调研报告文字。医学内容必须标注出处，不得编造文献。",
                     prompt
             );
 
@@ -132,10 +164,10 @@ public class ResearchController {
             return result;
 
         } catch (Exception e) {
-            log.error("Report generation failed", e);
+            log.error("Report generation failed, outlineLen={}", outlineJson == null ? 0 : outlineJson.length(), e);
             Map<String, Object> result = new HashMap<>();
             result.put("success", false);
-            result.put("error", e.getMessage());
+            result.put("error", e.getMessage() != null ? e.getMessage() : e.getClass().getName());
             return result;
         }
     }
@@ -201,8 +233,33 @@ public class ResearchController {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         var root = mapper.readTree(raw);
         String content = root.get("choices").get(0).get("message").get("content").asText();
-        content = content.replaceAll("(?s)```json\\s*", "").replaceAll("(?s)```\\s*", "").trim();
-        mapper.readTree(content); // validate
-        return content;
+        log.info("extractJson: AI content length={}, first 300 = [{}], last 300 = [{}]",
+                content.length(),
+                content.substring(0, Math.min(content.length(), 300)),
+                content.length() > 300 ? content.substring(content.length() - 300) : content);
+
+        content = com.yiyu.service.PptService.cleanAiJson(content);
+
+        // 第一次验证
+        try {
+            mapper.readTree(content);
+            return content;
+        } catch (Exception firstErr) {
+            log.warn("extractJson: first parse failed, attempting bracket fix. Error: {}", firstErr.getMessage());
+        }
+
+        // 兜底：括号平衡修复后重试
+        try {
+            String fixed = com.yiyu.service.PptService.fixBracketBalance(content);
+            mapper.readTree(fixed);
+            log.info("extractJson: bracket fix succeeded");
+            return fixed;
+        } catch (Exception secondErr) {
+            log.error("extractJson: JSON 修复失败, length={}, first 300 = [{}], last 300 = [{}]",
+                    content.length(),
+                    content.substring(0, Math.min(content.length(), 300)),
+                    content.length() > 300 ? content.substring(content.length() - 300) : content, secondErr);
+            throw secondErr;
+        }
     }
 }

@@ -41,7 +41,10 @@
 
       <div v-for="(msg, i) in messages" :key="i" class="msg" :class="msg.role">
         <div class="msg-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
-        <div class="msg-bubble" v-html="msg.content"></div>
+        <div class="msg-bubble">
+          <span v-html="msg.content"></span>
+          <span v-if="msg.role==='ai'" class="copy-btn" @click="copyMsg($event, i)">复制</span>
+        </div>
       </div>
     </div>
 
@@ -105,7 +108,8 @@ async function sendMessage(e) {
   try {
     const res = await chatSend(text)
     addMsg('ai', res.data.reply || '已收到您的消息，正在处理...')
-  } catch {
+  } catch (err) {
+    console.error('聊天失败:', err, err?.response?.data)
     addMsg('ai', '没成功，换个说法试试？😅')
   }
 }
@@ -131,6 +135,15 @@ function handleFile(file) {
   const icon = iconMap[ext] || '📎'
   addMsg('user', `${icon} <b>${file.name}</b> 已上传`)
   addMsg('ai', `已收到 <b>${file.name}</b> ✅ 请告诉我您想做什么？`)
+}
+
+function copyMsg(e, i) {
+  const bubble = e.target.parentElement
+  const text = bubble?.innerText || ''
+  navigator.clipboard.writeText(text.replace('复制', '').trim()).then(() => {
+    e.target.textContent = '已复制'
+    setTimeout(() => e.target.textContent = '复制', 1500)
+  })
 }
 </script>
 
@@ -174,6 +187,7 @@ function handleFile(file) {
 .msg.ai .msg-bubble {
   background: #fff; color: #333; border-bottom-left-radius: 4px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  user-select: text; position: relative;
 }
 .suggestion-cards { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .suggestion-card {
@@ -223,6 +237,9 @@ function handleFile(file) {
 }
 .input-hint .file-btn { color: #c00000; cursor: pointer; font-size: 13px; display: inline-flex; gap: 4px; }
 .input-hint .file-btn:hover { color: #a00000; }
+.copy-btn { position: absolute; top: 4px; right: 4px; font-size: 12px; color: #999; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all .15s; opacity: 0; background: rgba(255,255,255,0.8); }
+.msg.ai .msg-bubble:hover .copy-btn { opacity: 1; }
+.copy-btn:hover { color: #c00000; background: #f5f5f5; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
 </style>

@@ -14,6 +14,7 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        timeout: 300000, // 5 分钟，匹配后端 DeepSeek 最长 180s + 余量
       },
     },
   },

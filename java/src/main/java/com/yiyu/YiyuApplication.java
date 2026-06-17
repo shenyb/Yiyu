@@ -7,11 +7,34 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class YiyuApplication {
 
     public static void main(String[] args) {
+        suppressMacOsImkNoise();
         if (shouldLaunchDesktop(args)) {
             com.yiyu.desktop.YiyuDesktop.main(args);
         } else {
             SpringApplication.run(YiyuApplication.class, args);
         }
+    }
+
+    /**
+     * macOS JDK 会向 stderr 直接输出 "error messaging the mach port for IMK..."，
+     * 不经过任何 Java logging 框架，无法用 logback 过滤。
+     * 用自定义 PrintStream 包装 stderr，过滤掉这类噪音行。
+     */
+    private static void suppressMacOsImkNoise() {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("mac")) return;
+        java.io.PrintStream originalErr = System.err;
+        System.setErr(new java.io.PrintStream(originalErr, true) {
+            @Override
+            public void println(String x) {
+                if (x != null && x.contains("error messaging the mach port for IMK")) return;
+                super.println(x);
+            }
+            @Override
+            public void print(String s) {
+                if (s != null && s.contains("error messaging the mach port for IMK")) return;
+                super.print(s);
+            }
+        });
     }
 
     private static boolean shouldLaunchDesktop(String[] args) {

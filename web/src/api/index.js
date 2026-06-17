@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 120000,
+  timeout: 200000, // P1-01: 匹配后端 180s + 余量
 })
 
 export function health() {

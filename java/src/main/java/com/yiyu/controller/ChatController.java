@@ -1,6 +1,8 @@
 package com.yiyu.controller;
 
 import com.yiyu.service.DeepSeekService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -9,6 +11,7 @@ import java.util.Map;
 @RequestMapping("/api/chat")
 public class ChatController {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatController.class);
     private final DeepSeekService deepSeek;
 
     public ChatController(DeepSeekService deepSeek) {
@@ -25,7 +28,8 @@ public class ChatController {
             );
             return Map.of("reply", reply);
         } catch (Exception e) {
-            return Map.of("reply", "没成功，换个说法试试？😅\n\n" + e.getMessage());
+            log.error("Chat send failed, message={}", message, e);
+            return Map.of("reply", "没成功，换个说法试试？😅\n\n" + String.valueOf(e.getMessage()));
         }
     }
 }

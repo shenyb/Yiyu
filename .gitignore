@@ -4,6 +4,8 @@ java/*.jar
 java/*.war
 java/.sts4-cache/
 java/.springBeans/
+java/.atomcode/
+java/${project.build.directory}/
 
 # Vue / Node
 web/node_modules/
@@ -32,3 +34,6 @@ dist/
 runtime/
 output/
 templates/javafx-libs/
+
+# AtomCode
+.atomcode/

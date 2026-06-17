@@ -17,7 +17,10 @@
       </div>
       <div v-for="(msg, i) in messages" :key="i" class="msg" :class="msg.role">
         <div class="msg-avatar">{{ msg.role==='user'?'👤':'🤖' }}</div>
-        <div class="msg-bubble" v-html="msg.content"></div>
+        <div class="msg-bubble">
+          <span v-html="msg.content"></span>
+          <span v-if="msg.role==='ai'" class="copy-btn" @click="copyMsg($event, i)">复制</span>
+        </div>
       </div>
     </div>
     <div class="input-area" @dragover.prevent="dragOver=true" @dragleave="dragOver=false" @drop.prevent="onDrop" :class="{'drag-over':dragOver}">
@@ -37,9 +40,9 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import axios from 'axios'
+import api from '../api/index.js'
 
-const sessionId = 'doc-' + Date.now()
+const sessionId = ref('doc-' + Date.now())
 const messages = ref([])
 const inputText = ref('')
 const loading = ref(false)
@@ -66,29 +69,20 @@ function onFileSelected(e) {
 function onDrop(e) { dragOver.value=false; const f=e.dataTransfer.files[0]; if(f) handleFile(f) }
 
 async function loadFile(file) {
-  const ext = file.name.split('.').pop().toLowerCase()
-  const textExts = ['txt', 'md', 'json', 'csv', 'xml', 'yaml', 'yml']
-
-  if (!textExts.includes(ext)) {
-    const last = messages.value[messages.value.length-1]
-    last.content = `已收到 <b>${file.name}</b> ✅<br>桌面版可直接打开此格式。浏览器中当前仅支持 txt/md/json 文本文件。`
-    return
-  }
-
   try {
-    const text = await file.text()
-    const res = await axios.post('/api/docqa/load', {
-      sessionId: sessionId,
-      filePath: file.name,
-      fileContent: text.substring(0, 50000)
-    })
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await api.post('/docqa/upload', fd)
     if (res.data.success) {
+      sessionId.value = res.data.sessionId
       fileName.value = res.data.fileName
-      updateLastMsg(`已收到 <b>${file.name}</b> ✅<br>文件摘要：${res.data.summary}<br><br>您可以问我关于这份文件的问题了。`)
+      hasFile.value = true
+      updateLastMsg(`已读取 <b>${file.name}</b> ✅<br>文件摘要：${res.data.summary}<br><br>您可以问我关于这份文件的问题了。`)
     } else {
       updateLastMsg('文件读取失败：' + (res.data.error || '未知错误'))
     }
-  } catch {
+  } catch (err) {
+    console.error('文件处理失败:', err, err?.response?.data)
     updateLastMsg('文件处理失败😅')
   }
 }
@@ -105,8 +99,8 @@ async function sendMessage() {
   addMsg('user', text)
   addMsg('ai', '正在查阅文件内容...⏳')
   try {
-    const res = await axios.post('/api/docqa/ask', {
-      sessionId: sessionId,
+    const res = await api.post('/docqa/ask', {
+      sessionId: sessionId.value,
       question: text
     })
     if (res.data.success) {
@@ -114,7 +108,8 @@ async function sendMessage() {
     } else {
       updateLastMsg('回答失败：' + (res.data.error || '未知错误'))
     }
-  } catch {
+  } catch (err) {
+    console.error('请求失败:', err, err?.response?.data)
     updateLastMsg('请求失败，请稍后重试😅')
   }
   loading.value = false
@@ -122,6 +117,15 @@ async function sendMessage() {
 
 function updateLastMsg(html) { if(messages.value.length>0) { messages.value[messages.value.length-1].content=html; scrollBottom() } }
 function scrollBottom() { nextTick(()=>{ if(msgContainer.value) msgContainer.value.scrollTop=msgContainer.value.scrollHeight }) }
+
+function copyMsg(e, i) {
+  const bubble = e.target.parentElement
+  const text = bubble?.innerText || ''
+  navigator.clipboard.writeText(text.replace('复制', '').trim()).then(() => {
+    e.target.textContent = '已复制'
+    setTimeout(() => e.target.textContent = '复制', 1500)
+  })
+}
 </script>
 
 <style scoped>
@@ -140,7 +144,7 @@ function scrollBottom() { nextTick(()=>{ if(msgContainer.value) msgContainer.val
 .msg.ai .msg-avatar{background:#1e1e2d;color:#fff}
 .msg-bubble{padding:12px 16px;border-radius:14px;font-size:14px;line-height:1.65}
 .msg.user .msg-bubble{background:#c00000;color:#fff;border-bottom-right-radius:4px}
-.msg.ai .msg-bubble{background:#fff;color:#333;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.msg.ai .msg-bubble{background:#fff;color:#333;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.06);user-select:text;position:relative}
 .input-area{padding:12px 16px 14px;background:#fff;border-top:1px solid #e8e8ec;flex-shrink:0;position:relative}
 .input-area.drag-over textarea{border-color:#2e7d32;background:#f0faf0}
 .drop-indicator{display:none;position:absolute;inset:0;background:rgba(46,125,50,0.04);border:2px dashed #2e7d32;border-radius:10px;align-items:center;justify-content:center;font-size:15px;color:#2e7d32;font-weight:500;pointer-events:none;z-index:10}
@@ -154,6 +158,9 @@ function scrollBottom() { nextTick(()=>{ if(msgContainer.value) msgContainer.val
 .input-hint{font-size:12px;color:#aaa;margin-top:6px;padding-left:4px;display:flex;gap:14px;align-items:center}
 .input-hint .file-btn{color:#2e7d32;cursor:pointer;font-size:13px;display:inline-flex;gap:4px}
 .input-hint .file-btn:hover{color:#1b5e20}
+.copy-btn{position:absolute;top:4px;right:4px;font-size:12px;color:#999;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .15s;opacity:0;background:rgba(255,255,255,0.8)}
+.msg.ai .msg-bubble:hover .copy-btn{opacity:1}
+.copy-btn:hover{color:#2e7d32;background:#f0f7f0}
 ::-webkit-scrollbar{width:6px}
 ::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}
 </style>

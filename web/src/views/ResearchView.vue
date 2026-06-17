@@ -13,13 +13,16 @@
             <b>例如：</b>"帮我查一下近三年mRNA疫苗在肿瘤治疗中的临床研究进展"
           </div>
           <div style="margin-top:10px;font-size:13px;color:#888;">
-            📚 我会联网检索相关文献，整理成调研报告
+            📚 我会基于医学知识库帮您整理调研报告（注：当前版本未接入联网检索，文献出处需自行核实）
           </div>
         </div>
       </div>
       <div v-for="(msg, i) in messages" :key="i" class="msg" :class="msg.role">
         <div class="msg-avatar">{{ msg.role==='user'?'👤':'🤖' }}</div>
-        <div class="msg-bubble" v-html="msg.content"></div>
+        <div class="msg-bubble">
+          <span v-html="msg.content"></span>
+          <span v-if="msg.role==='ai'" class="copy-btn" @click="copyMsg($event, i)">复制</span>
+        </div>
       </div>
     </div>
     <div class="input-area" @dragover.prevent="dragOver=true" @dragleave="dragOver=false" @drop.prevent="onDrop" :class="{'drag-over':dragOver}">
@@ -40,7 +43,7 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
-import axios from 'axios'
+import api from '../api/index.js'
 
 const messages = ref([])
 const inputText = ref('')
@@ -50,6 +53,7 @@ const step = ref(0)
 const outlineStr = ref('')
 const msgContainer = ref(null)
 const fileInput = ref(null)
+const refContent = ref('') // P1-04: 存储上传文件的文本内容
 
 function autoResize(e) { e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,120)+'px' }
 function addMsg(role, content) {
@@ -60,11 +64,25 @@ function triggerFileInput() { fileInput.value?.click() }
 function onFileSelected(e) { const f=e.target.files[0]; if(f) handleFile(f) }
 function onDrop(e) { dragOver.value=false; const f=e.dataTransfer.files[0]; if(f) handleFile(f) }
 
-function handleFile(file) {
+async function handleFile(file) {
   const iconMap = { pdf:'📄', docx:'📝', doc:'📝', txt:'📄' }
   const ext = file.name.split('.').pop().toLowerCase()
   addMsg('user', `${iconMap[ext]||'📎'} <b>${file.name}</b> 已上传`)
-  addMsg('ai', `已收到 <b>${file.name}</b> ✅ 请告诉我研究方向👇`)
+  addMsg('ai', `正在读取 <b>${file.name}</b> ...⏳`)
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await api.post('/research/upload-ref', fd)
+    if (res.data.success) {
+      refContent.value = res.data.content
+      updateLastMsg(`已读取 <b>${file.name}</b> ✅ 文件内容已作为参考资料。请告诉我研究方向👇`)
+    } else {
+      updateLastMsg('文件读取失败：' + (res.data.error || '未知错误'))
+    }
+  } catch (err) {
+    console.error('文件上传失败:', err, err?.response?.data)
+    updateLastMsg('文件上传失败😅')
+  }
 }
 
 async function sendMessage() {
@@ -75,12 +93,20 @@ async function sendMessage() {
   addMsg('user', text)
 
   if (step.value === 0) {
-    addMsg('ai', '好的，我来检索相关文献，请稍等...⏳')
+    addMsg('ai', '好的，我来整理相关文献资料，请稍等...⏳')
     try {
-      const res = await axios.post('/api/research/generate-outline', { topic: text })
+      const res = await api.post('/research/generate-outline', { topic: text, reference: refContent.value })
       if (res.data.success && res.data.outline) {
         outlineStr.value = res.data.outline
-        const outline = JSON.parse(res.data.outline)
+        let outline
+        try {
+          outline = JSON.parse(res.data.outline)
+        } catch (parseErr) {
+          console.error('outline JSON 解析失败, raw (first 200):', res.data.outline.substring(0, 200), parseErr)
+          updateLastMsg('大纲解析失败，AI 返回格式异常。请重试或换个说法。')
+          loading.value = false
+          return
+        }
         const sections = outline.sections || []
         let itemsHtml = sections.map((s, i) =>
           `<div class="item"><span class="num">${i+1}</span> ${escapeHtml(s.title||'')}</div>`
@@ -98,7 +124,8 @@ async function sendMessage() {
       } else {
         updateLastMsg('没成功生成框架，换个说法试试？')
       }
-    } catch {
+    } catch (err) {
+      console.error('检索失败:', err, err?.response?.data)
       updateLastMsg('检索失败，请稍后重试😅')
     }
   } else {
@@ -114,7 +141,7 @@ async function confirmReport() {
   addMsg('ai', '正在整理文献、撰写报告…⏳')
 
   try {
-    const res = await axios.post('/api/research/generate-report', { outline: outlineStr.value })
+    const res = await api.post('/research/generate-report', { outline: outlineStr.value })
     const result = res.data
     if (result.success) {
       updateLastMsg(`✅ 调研报告已生成完毕！
@@ -130,7 +157,8 @@ async function confirmReport() {
     } else {
       updateLastMsg('生成报告失败：' + (result.error || '未知错误'))
     }
-  } catch {
+  } catch (err) {
+    console.error('生成报告失败:', err, err?.response?.data)
     updateLastMsg('生成报告失败，请稍后重试😅')
   }
   loading.value = false
@@ -150,7 +178,7 @@ function startOver() {
 }
 
 function updateLastMsg(html) {
-  if(messages.value.length>0) { messages.value[messages.value.length-1].content=html; scrollBottom() }
+  if(messages.value.length>0) { messages.value[messages.value.length-1].content=html; nextTick(() => { if(msgContainer.value) msgContainer.value.scrollTop = msgContainer.value.scrollHeight }) }
 }
 function escapeHtml(str) { const d=document.createElement('div'); d.textContent=str; return d.innerHTML }
 function formatSize(bytes) { if(!bytes) return '未知'; if(bytes<1024) return bytes+' B'; if(bytes<1048576) return (bytes/1024).toFixed(1)+' KB'; return (bytes/1048576).toFixed(1)+' MB' }
@@ -158,7 +186,28 @@ function formatSize(bytes) { if(!bytes) return '未知'; if(bytes<1024) return b
 document.addEventListener('research-confirm', confirmReport)
 document.addEventListener('research-modify', modifyOutline)
 document.addEventListener('research-restart', startOver)
+
+function copyMsg(e, i) {
+  const bubble = e.target.parentElement
+  const text = bubble?.innerText || ''
+  navigator.clipboard.writeText(text.replace('复制', '').trim()).then(() => {
+    e.target.textContent = '已复制'
+    setTimeout(() => e.target.textContent = '复制', 1500)
+  })
+}
 </script>
+
+<style>
+/* 按钮样式不使用 scoped，v-html 内的按钮需要穿透 */
+.card-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.card-actions .btn{padding:7px 18px;border-radius:8px;border:none;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:all .15s;text-decoration:none}
+.card-actions .btn-primary{background:#0066cc;color:#fff}
+.card-actions .btn-primary:hover{background:#0055aa}
+.card-actions .btn-outline{background:transparent;color:#0066cc;border:1px solid #0066cc}
+.card-actions .btn-outline:hover{background:#e8f4ff}
+.card-actions .btn-ghost{background:transparent;color:#666;border:1px solid #ddd}
+.card-actions .btn-ghost:hover{background:#f5f5f5}
+</style>
 
 <style scoped>
 .chat-panel{flex:1;display:flex;flex-direction:column;background:#f7f8fa;min-width:0}
@@ -176,18 +225,10 @@ document.addEventListener('research-restart', startOver)
 .msg.ai .msg-avatar{background:#1e1e2d;color:#fff}
 .msg-bubble{padding:12px 16px;border-radius:14px;font-size:14px;line-height:1.65}
 .msg.user .msg-bubble{background:#c00000;color:#fff;border-bottom-right-radius:4px}
-.msg.ai .msg-bubble{background:#fff;color:#333;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.msg.ai .msg-bubble{background:#fff;color:#333;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.06);user-select:text;position:relative}
 .outline-card{background:#f9fafb;border:1px solid #e8e8ec;border-radius:10px;padding:12px 16px;margin-top:8px}
 .outline-card .item{display:flex;gap:8px;padding:5px 0;font-size:13.5px;color:#444}
 .outline-card .item .num{width:20px;height:20px;border-radius:50%;background:#0066cc;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:600;margin-top:2px}
-.card-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-.card-actions .btn{padding:7px 18px;border-radius:8px;border:none;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:all .15s}
-.card-actions .btn-primary{background:#0066cc;color:#fff}
-.card-actions .btn-primary:hover{background:#0055aa}
-.card-actions .btn-outline{background:transparent;color:#0066cc;border:1px solid #0066cc}
-.card-actions .btn-outline:hover{background:#e8f4ff}
-.card-actions .btn-ghost{background:transparent;color:#666;border:1px solid #ddd}
-.card-actions .btn-ghost:hover{background:#f5f5f5}
 .input-area{padding:12px 16px 14px;background:#fff;border-top:1px solid #e8e8ec;flex-shrink:0;position:relative}
 .input-area.drag-over textarea{border-color:#0066cc;background:#e8f4ff}
 .drop-indicator{display:none;position:absolute;inset:0;background:rgba(0,102,204,0.04);border:2px dashed #0066cc;border-radius:10px;align-items:center;justify-content:center;font-size:15px;color:#0066cc;font-weight:500;pointer-events:none;z-index:10}
@@ -201,6 +242,9 @@ document.addEventListener('research-restart', startOver)
 .input-hint{font-size:12px;color:#aaa;margin-top:6px;padding-left:4px;display:flex;gap:14px;align-items:center}
 .input-hint .file-btn{color:#0066cc;cursor:pointer;font-size:13px;display:inline-flex;gap:4px}
 .input-hint .file-btn:hover{color:#004499}
+.copy-btn{position:absolute;top:4px;right:4px;font-size:12px;color:#999;cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .15s;opacity:0;background:rgba(255,255,255,0.8)}
+.msg.ai .msg-bubble:hover .copy-btn{opacity:1}
+.copy-btn:hover{color:#0066cc;background:#f0f0f0}
 ::-webkit-scrollbar{width:6px}
 ::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}
 </style>
